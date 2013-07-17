@@ -1,11 +1,17 @@
 package eu.stratosphere.meteor.client;
 
 import java.io.IOException;
+import java.util.UUID;
 
 import com.hp.hpl.jena.graph.Factory;
+
+import com.rabbitmq.client.AMQP.BasicProperties;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.Channel;
+import com.rabbitmq.client.ConsumerCancelledException;
+import com.rabbitmq.client.QueueingConsumer;
+import com.rabbitmq.client.ShutdownSignalException;
 
 import eu.stratosphere.meteor.common.Submitable;
 
@@ -21,46 +27,68 @@ import eu.stratosphere.meteor.common.Submitable;
  *
  */
 public class DOPAClient implements Submitable {
-	private String QUEUE_NAME;
-  
 	private Connection connection;
-	private Channel statusQueue = null; 
-	
-    
+	private Channel channel;
+	private QueueingConsumer requestQueue;
+	private QueueingConsumer jobQueue;
+	private String requestQueueName = "rpc_queue";
+	private String replyQueueName;   //for reply_to
+
+    private UUID corrIdU = java.util.UUID.randomUUID();
+    private long corrIdLong =corrIdU.getLeastSignificantBits();
+
 	@Override
 	public void createStatusQueue(String queueName) {
 		// TODO Auto-generated method stub
-		this.QUEUE_NAME=queueName;
 		ConnectionFactory factory = new ConnectionFactory();
 	    factory.setHost("localhost");
-	  		
 	    try {
 			connection = factory.newConnection();
-		    statusQueue = connection.createChannel();
-		    
+			channel = connection.createChannel();
+
+			replyQueueName = channel.queueDeclare().getQueue(); 
+			requestQueue = new QueueingConsumer(channel);
+			jobQueue = new QueueingConsumer(channel);
+			
+			channel.basicConsume("request", true, requestQueue);			
+			channel.basicConsume("job", false, jobQueue);
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-  
 	}
 
 	@Override
 	public void submit(String meteorScript) {
 		// TODO Auto-generated method stub
-		
-		 try {
-			 statusQueue.queueDeclare(QUEUE_NAME, false, false, false, null);
-	    	 statusQueue.basicPublish("", QUEUE_NAME, null, meteorScript.getBytes());
-			 statusQueue.close();
-			 connection.close();
-		 } catch (IOException e) {
+		try {
+				String response = null; 
+				channel.queueDeclare(requestQueueName, false, false, false, null);
+			    String corrId = corrIdU.toString();
+		    	 
+		    	BasicProperties props = new BasicProperties
+		    	                                .Builder()
+		    	                                .correlationId(corrId)
+		    	                                .replyTo(replyQueueName)
+		    	                                .build();
+	
+		    	channel.basicPublish("", requestQueueName, props, meteorScript.getBytes());
+	
+		    	    while (true) {
+		    	        QueueingConsumer.Delivery delivery = requestQueue.nextDelivery();
+		    	        if (delivery.getProperties().getCorrelationId().equals(corrId)) {
+		    	            response = new String(delivery.getBody());
+		    	            break;
+		    	        }
+		    	    }
+		    	channel.close();
+				connection.close();
+		 } catch (IOException | ShutdownSignalException | ConsumerCancelledException | InterruptedException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 
 		    System.out.println(" [x] Sent '" + meteorScript + "'");
-		       
 	}
 
 	@Override
@@ -74,10 +102,12 @@ public class DOPAClient implements Submitable {
 	 */
 	public static void main(String[] args)throws java.io.IOException {
 		// TODO Auto-generated method stub
-		 String message = "Hello du da!";
-		 DOPAClient firstCall=new DOPAClient();
-		 firstCall.createStatusQueue("Status");
-		 firstCall.submit(message);
+		DOPAClient acall = new DOPAClient();
+
+		System.out.println(" [x] Requesting fib(30)");   
+		acall.createStatusQueue("hihi");
+		acall.submit("Hallo du da!");
+	
 	}
 
 }
