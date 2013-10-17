@@ -1,113 +1,160 @@
 package eu.stratosphere.meteor.client;
 
 import java.io.IOException;
-import java.util.UUID;
+import java.io.UnsupportedEncodingException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
-//import com.hp.hpl.jena.graph.Factory;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.json.JSONException;
+import org.json.JSONObject;
 
-import com.rabbitmq.client.AMQP.BasicProperties;
-import com.rabbitmq.client.ConnectionFactory;
-import com.rabbitmq.client.Connection;
-import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.ConsumerCancelledException;
-import com.rabbitmq.client.QueueingConsumer;
 import com.rabbitmq.client.ShutdownSignalException;
 
-import eu.stratosphere.meteor.common.Submitable;
+import eu.stratosphere.meteor.common.DSCLJob;
+import eu.stratosphere.meteor.common.JobStateListener;
 
 /**
- * Der client wird mit main(String[] args) gestartet
- * und soll vorerst nur einen einfachen String submitten.
- * Sowas wie "Hallo du da!".
  * 
- * Das Ergebnis wäre dann eine Antwort des Servers in der
- * statusQueue.
+ * This class represents the DOPA API client. Each client that connects
+ * to the scheduler needs to have a unique clientID. You can create a client
+ * by call the static method {@code createNewClient( final String clientID )}.
+ * 
+ * Before you can use this client object you have to connect it to the
+ * scheduler, which is done using its {@code connect} method. Call any
+ * other method before the client is connected an exception being thrown.
+ * 
+ * To see status informations about the client it implements a logger from
+ * {@link org.apache.commons.logging.Log}.
  *
- * @author André Greiner-Petter
- *
+ * @author 	André Greiner-Petter
+ * 			Tieyan Shan
+ *			Etienne Rolly
  */
-public class DOPAClient implements Submitable {
-	private Connection connection;
-	private Channel channel;
-	private QueueingConsumer requestQueue;
-	private QueueingConsumer jobQueue;
-	private String requestQueueName = "rpc_queue";
-	private String replyQueueName;   //for reply_to
-
-    private UUID corrIdU = java.util.UUID.randomUUID();
-    private long corrIdLong =corrIdU.getLeastSignificantBits();
-
-	@Override
-	public void createStatusQueue(String queueName) {
-		// TODO Auto-generated method stub
-		ConnectionFactory factory = new ConnectionFactory();
-	    factory.setHost("localhost");
-	    try {
-			connection = factory.newConnection();
-			channel = connection.createChannel();
-
-			replyQueueName = channel.queueDeclare().getQueue(); 
-			requestQueue = new QueueingConsumer(channel);
-			jobQueue = new QueueingConsumer(channel);
-			
-			channel.basicConsume("request", true, requestQueue);			
-			channel.basicConsume("job", false, jobQueue);
+public class DOPAClient {
+	/**
+	 * The log for client site.
+	 */
+	private static final Log LOG = LogFactory.getLog( DOPAClient.class );
+	
+	/**
+	 * The unique clientID of this client object
+	 */
+	private final String clientID;
+	
+	/**
+	 * The connection factory to handle all traffic from and to this client
+	 */
+	private ClientConnectionFactory connectionFac;
+	
+	private ArrayList<DSCLJob> jobList;
+	
+	/**
+	 * Constructs a new client object. This client isn't connected
+	 * to scheduler yet.
+	 * @param clientID final unique identifier
+	 */
+	private DOPAClient( final String ID ) {
+		this.clientID = ID;
+		this.connectionFac = null;
+		this.jobList = new ArrayList<DSCLJob>();
+	}
+	
+	/**
+	 * Try to connect the client with the scheduler services.
+	 * If this failed for any reason you can try it again.
+	 * 
+	 * It do nothing if the client is still connected.
+	 */
+	public void connect() {
+		// if the client is still connect
+		if ( this.connectionFac != null ) {
+			LOG.info( "The client is still connected. If you want to reconnect the client disconnect it first." );
+			return;
+		}
+		
+		// else try to connect it
+		try { this.connectionFac = new ClientConnectionFactory( this.clientID ); }
+		catch (Exception exc) { LOG.error( "Cannot connected to the scheduler services: " + exc.getMessage(), exc ); }
+	}
+	
+	/**
+	 * Try to disconnect the client. 
+	 * It do nothing if the client isn't connected yet.
+	 * 
+	 * If this method failed for any reason you can try it again.
+	 */
+	public void disconnect() {
+		// is the client connected?
+		if ( this.connectionFac == null ){
+			LOG.warn("The client isn't connected. Please connect it first.");
+			return;
+		}
+		
+		// else try to shutdown the connections
+		try { 
+			this.connectionFac.shutDownConnection();
+			this.connectionFac = null;
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			LOG.error( "Cannot close the connections or inform the scheduler: " + e.getMessage() , e);
 		}
 	}
-
-	@Override
-	public void submit(String meteorScript) {
-		// TODO Auto-generated method stub
-		try {
-				String response = null; 
-				channel.queueDeclare(requestQueueName, false, false, false, null);
-			    String corrId = corrIdU.toString();
-		    	 
-		    	BasicProperties props = new BasicProperties
-		    	                                .Builder()
-		    	                                .correlationId(corrId)
-		    	                                .replyTo(replyQueueName)
-		    	                                .build();
 	
-		    	channel.basicPublish("", requestQueueName, props, meteorScript.getBytes());
-	
-		    	    while (true) {
-		    	        QueueingConsumer.Delivery delivery = requestQueue.nextDelivery();
-		    	        if (delivery.getProperties().getCorrelationId().equals(corrId)) {
-		    	            response = new String(delivery.getBody());
-		    	            break;
-		    	        }
-		    	    }
-		    	channel.close();
-				connection.close();
-		 } catch (IOException | ShutdownSignalException | ConsumerCancelledException | InterruptedException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-
-		    System.out.println(" [x] Sent '" + meteorScript + "'");
+	/**
+	 * Returns an unmodifiable list of all jobs.
+	 * @return list of current job objects
+	 */
+	public List<DSCLJob> getJobList(){
+		return Collections.unmodifiableList( this.jobList );
 	}
-
-	@Override
-	public String getResult(long corrID) {
-		// TODO Auto-generated method stub
+	
+	/**
+	 * 
+	 * @param script
+	 * @param stateListener
+	 * @return
+	 */
+	public DSCLJob createNewJob( String script, JobStateListener stateListener ){
+		// TODO
 		return null;
 	}
-
-	/**
-	 * @param args
-	 */
-	public static void main(String[] args)throws java.io.IOException {
-		// TODO Auto-generated method stub
-		DOPAClient acall = new DOPAClient();
-
-		System.out.println(" [x] Requesting fib(30)");   
-		acall.createStatusQueue("hihi");
-		acall.submit("Hallo du da!");
 	
+	/**
+	 * 
+	 * @param job
+	 * @param stateListener
+	 */
+	public void reconnectJob( DSCLJob job, JobStateListener stateListener ){
+		// TODO
 	}
-
+	
+	/**
+	 * Creates a new client object by a given clientID. This clientID is final
+	 * and cannot change while this client is alive.
+	 * After you got the client object you have to connect it with
+	 * the scheduler service. Call the method connect() to do this.
+	 * 
+	 * @param clientID final unique identifier
+	 * @return the client object (not connected yet)
+	 */
+	public static DOPAClient createNewClient( final String ID ) {
+		return new DOPAClient( ID );
+	}
+	
+	/** TODO - only test area follow - TODO **/
+	
+	//public void send(  )
+	
+	public static void main( String[] args ){
+		DOPAClient client = createNewClient( "TanteEmma" );
+		
+		System.out.println( "client erstellt" );
+		
+		client.connect();
+		
+		System.out.println( "connection erstellt." );
+	}
 }
