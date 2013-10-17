@@ -4,16 +4,19 @@
 
 	<modelVersion>4.0.0</modelVersion>
 
-	<parent>
-		<artifactId>meteor</artifactId>
-		<groupId>eu.stratosphere</groupId>
-		<version>0.2.1</version>
-	</parent>
-	
+
+
+	  <repositories>
+    <repository>
+      <id>eu.stratosphere</id>
+      <url>http://dopa.dima.tu-berlin.de/jars/</url>
+    </repository>
+  </repositories>
 	<artifactId>meteor-scheduler</artifactId>
 	<name>meteor-scheduler</name>
-
-	<packaging>jar</packaging>
+		<groupId>eu.stratosphere</groupId>
+		<version>0.3</version>
+	 <!--<packaging>jar</packaging>-->
 
 	<dependencies>
 		<!-- import other projects -->
@@ -39,10 +42,10 @@
 			<artifactId>amqp-client</artifactId>
 			<version>3.1.3</version>
 		</dependency>
-		<dependency>
+		<!-- <dependency>
       		<groupId>org.apache.hadoop</groupId>
       		<artifactId>hadoop-core</artifactId>
-    	</dependency>
+    	</dependency>-->
 		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>

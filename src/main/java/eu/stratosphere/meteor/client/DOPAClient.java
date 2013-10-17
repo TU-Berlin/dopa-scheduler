@@ -3,7 +3,7 @@ package eu.stratosphere.meteor.client;
 import java.io.IOException;
 import java.util.UUID;
 
-import com.hp.hpl.jena.graph.Factory;
+//import com.hp.hpl.jena.graph.Factory;
 
 import com.rabbitmq.client.AMQP.BasicProperties;
 import com.rabbitmq.client.ConnectionFactory;
