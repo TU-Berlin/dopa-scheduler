@@ -1,5 +1,7 @@
 package eu.stratosphere.meteor.common;
 
+import eu.stratosphere.meteor.client.DSCLJob;
+
 /**
  * TODO tutorial/descriptions how to handle this interface
  * 
@@ -10,7 +12,7 @@ public interface JobStateListener {
 	/**
 	 * 
 	 * @param job
-	 * @param status
+	 * @param newStatus
 	 */
-	public void stateChanged( DSCLJob job, DSCLJob.State status );
+	public void stateChanged( DSCLJob job, JobStates newStatus );
 }

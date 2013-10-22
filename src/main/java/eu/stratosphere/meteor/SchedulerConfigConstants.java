@@ -50,17 +50,17 @@ public final class SchedulerConfigConstants {
 	/**
 	 * The routing key mask for jobs.
 	 * 
-	 * Routing Key: setJob.<jobType>.<clientID>.<jobID>
+	 * Routing Key: setJob.<clientID>.<jobID>
 	 */
-	public static final String JOB_KEY_MASK = "setJob.*.*.#";
+	public static final String JOB_KEY_MASK = "setJob.*.#";
 	
 	/**
 	 * The routing key mask for requests.
 	 * 
 	 * TODO which informations contains the routing key?
-	 * Routing Key: requestStatus.<>.<>
+	 * Routing Key: requestStatus
 	 */
-	public static final String REQUEST_KEY_MASK = "requestStatus.*.*";
+	public static final String REQUEST_KEY_MASK = "requestStatus";
 	
 	/**
 	 * The routing key mask for hand shakes. Use this to register a client at

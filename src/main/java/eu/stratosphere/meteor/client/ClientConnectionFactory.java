@@ -2,10 +2,7 @@ package eu.stratosphere.meteor.client;
 
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
-import java.util.ArrayList;
 import java.util.Date;
-import java.util.List;
-import java.util.concurrent.ExecutionException;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -21,8 +18,8 @@ import com.rabbitmq.client.Envelope;
 import com.rabbitmq.client.AMQP;
 
 import eu.stratosphere.meteor.SchedulerConfigConstants;
-import eu.stratosphere.meteor.common.DSCLJob;
 import eu.stratosphere.meteor.common.JobStateListener;
+import eu.stratosphere.meteor.common.JobStates;
 
 /**
  * This class sends requests and jobs to the server. It handle all connections
@@ -30,10 +27,9 @@ import eu.stratosphere.meteor.common.JobStateListener;
  *
  * @author André Greiner-Petter
  */
-public class ClientConnectionFactory {
-	
+public class ClientConnectionFactory {	
 	/** Unique informations about the client **/
-	private final String clientID;
+	private final DOPAClient client;
 	private final String charset = "UTF-8";
 	private String statusQueue;
 	private String replyQueue;
@@ -45,9 +41,6 @@ public class ClientConnectionFactory {
 	private QueueingConsumer staticStatusConsumer;
 	private QueueingConsumer tmpRequestConsumer;
 	
-	/** static list of clients who listen on status queue **/
-	private List<JobStateListener> listeners = new ArrayList<JobStateListener>();
-	
 	/**
 	 * Create new channel to connect this client with rabbitMQ and the DOPAScheduler.
 	 * It creates a channel to send request and another channel to get status.
@@ -57,8 +50,8 @@ public class ClientConnectionFactory {
 	 * 
 	 * @throws Exception if the factory cannot initialize connections to rabbitMQ
 	 */
-	protected ClientConnectionFactory( final String clientID ) throws Exception {		
-		this.clientID = clientID;
+	protected ClientConnectionFactory( final DOPAClient client ) throws Exception {		
+		this.client = client;
 		
 		// build a connection
 		connectFactory = new ConnectionFactory();
@@ -124,14 +117,14 @@ public class ClientConnectionFactory {
 				SchedulerConfigConstants.REQUEST_EXCHANGE, 
 				"register.login", 
 				props, 
-				clientID.getBytes(charset) ); // TODO name or authentification informations
+				client.getClientID().getBytes(charset) ); // TODO name and/or authentification informations
 		
 		// wait for the name of status exchange to bind our status queue to this exchange
 		QueueingConsumer.Delivery delivery = handShakeConsumer.nextDelivery();
 		String status_exchange = new String( delivery.getBody(), charset );
 		
 		// bind the queue with the exchange
-		this.statusChannel.queueBind( this.statusQueue, status_exchange, SchedulerConfigConstants.getRoutingKey(clientID) );
+		this.statusChannel.queueBind( this.statusQueue, status_exchange, SchedulerConfigConstants.getRoutingKey(client.getClientID()) );
 		
 		// close and delete all handshake components
 		this.requestChannel.basicCancel( "handShakeConsumer" );
@@ -165,6 +158,9 @@ public class ClientConnectionFactory {
 	 * 
 	 * If it returns null try to get the status later.
 	 * 
+	 * This method normally used asynchronously by {@code StatusConsumer.class}. If a new
+	 * message received the consumer called this method instantly.
+	 * 
 	 * @param timeOut to wait for message
 	 * @return json object of status message or null
 	 * @throws ShutdownSignalException if connection is shutdown while waiting
@@ -178,7 +174,6 @@ public class ClientConnectionFactory {
 			throws ShutdownSignalException, ConsumerCancelledException, InterruptedException, 
 			UnsupportedEncodingException, JSONException, IOException 
 			{
-		// TODO ist die nachricht aktuell
 		// get message in timeOut milliseconds
 		QueueingConsumer.Delivery delivery = staticStatusConsumer.nextDelivery( timeOut );
 		
@@ -188,13 +183,14 @@ public class ClientConnectionFactory {
 			if ( !delivery.getProperties().getContentType().contains("json") )
 				throw new JSONException( "Expected json status but was another object type: " + delivery.getProperties().getContentType() );		
 			
+			// decode message return the JSONObject
 			String charSet = delivery.getProperties().getContentEncoding();
 			String jsonString = new String( delivery.getBody(), charSet );
 			
 			return new JSONObject( jsonString );
 		}
 		
-		sendRequest( "status", "1" );
+		sendRequest( new JSONObject().put("Request", "status"), "1" );
 		return null;
 	}
 
@@ -203,12 +199,11 @@ public class ClientConnectionFactory {
 	 * submit this job 'too late' the scheduler can ask the client before submits his job.
 	 * 
 	 * @param meteorScript the meteor script represents the job
-	 * @param jobType type of this job
-	 * @param clientID of this client
+	 * @param client of this client
 	 * @param jobID to specify this job
 	 * @throws IOException
 	 */
-	public void submitJob( String meteorScript, String jobType, String clientID, String jobID ) throws IOException {
+	protected void submitJob( String meteorScript, String clientID, String jobID ) throws IOException {
 		BasicProperties jobProps = new BasicProperties
 				.Builder()
 				.contentEncoding(charset)
@@ -217,7 +212,7 @@ public class ClientConnectionFactory {
 		
 		requestChannel.basicPublish(
 	    		SchedulerConfigConstants.REQUEST_EXCHANGE, 
-	    		"setJob." + jobType + "." + clientID + "." + jobID, 
+	    		"setJob." + clientID + "." + jobID, 
 	    		jobProps,
 	    		meteorScript.getBytes( charset )
 	    		);
@@ -232,7 +227,7 @@ public class ClientConnectionFactory {
 	 * @throws ConsumerCancelledException 
 	 * @throws ShutdownSignalException 
 	 */
-	public void sendRequest( String request, String correlationID ) throws IOException, 
+	protected void sendRequest( JSONObject request, String correlationID ) throws IOException, 
 			ShutdownSignalException, ConsumerCancelledException, InterruptedException
 			{
 		// if there is an old staticStatusConsumer waiting for replies
@@ -259,9 +254,9 @@ public class ClientConnectionFactory {
 		// send request
 		requestChannel.basicPublish(
 				SchedulerConfigConstants.REQUEST_EXCHANGE, 
-				"requestStatus.*.*", // TODO which informations are needed in routingKey?
+				"requestStatus", // TODO which informations are needed in routingKey?
 				replyProps,
-				request.getBytes()
+				request.toString().getBytes()
 				);
 	}
 	
@@ -275,7 +270,7 @@ public class ClientConnectionFactory {
 	 * @throws ConsumerCancelledException if this staticStatusConsumer doesn't exist anymore
 	 * @throws IOException if cannot cancel the tmpRequestConsumer
 	 */
-	public String getReply( String correlationID, long timeOut ) throws ConsumerCancelledException, IOException{
+	protected String getReply( String correlationID, long timeOut ) throws ConsumerCancelledException, IOException{
 		try {
 			// get reply from reply queue
 			QueueingConsumer.Delivery reply = tmpRequestConsumer.nextDelivery( timeOut );
@@ -298,75 +293,72 @@ public class ClientConnectionFactory {
 		} catch (ShutdownSignalException e) {
 			e.printStackTrace();
 		} catch (InterruptedException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		} 
 		
 		return null;
 	}
 	
-	protected boolean addListener( JobStateListener stateListener ){
-		return this.listeners.add( stateListener );
-	}
-	
-	protected boolean removeListener( JobStateListener stateListener ){
-		return this.listeners.remove( stateListener );
-	}
-	
-	private void callListener( DSCLJob job, DSCLJob.State newState ){
-		for ( JobStateListener listener : this.listeners )
-			listener.stateChanged( job, newState );
-	}
-	
 	/**
 	 * Close the connections to the server queues.
 	 * @throws IOException cannot close the connections
 	 */
-	public void shutDownConnection() throws IOException{
+	protected void shutDownConnection() throws IOException{
 		this.unsubscribe();
 		this.requestChannel.close();
 		this.connection.close();
 	}
 	
 	/**
-	 * 
+	 * This class extends the QueueingConsumer and handle deliveries in a special way.
+	 * The consumer sets the new status to the specified DSCLJob.
 	 *
 	 * @author André Greiner-Petter
-	 *
 	 */
 	private class StatusConsumer extends QueueingConsumer {
 		
+		/**
+		 * Super constructor
+		 * @param ch
+		 */
 		public StatusConsumer( Channel ch ) {
 			super(ch);
 		}
 		
+		/**
+		 * Message handle incoming deliveries. These messages are status updates. This consumer
+		 * updates the states of jobs and invoke stateChanged if this job got one or more
+		 * JobStateListeners.
+		 */
 		@Override
 		public void handleDelivery( String consumerTag, Envelope envelope, AMQP.BasicProperties properties, byte[] body )
 				throws IOException {
+			// forward delivery
 			super.handleDelivery(consumerTag, envelope, properties, body);
 			
+			// try to handle new object
 			try {
+				// create status object
 				JSONObject status = getStatus( 0 );
 				
-				System.out.println( status );
-				
+				// get informations to update specified job
 				String jobID = status.getString("JobID");
-				String newState = status.getString("State");
+				DSCLJob job = client.getJobList().get( jobID );
+				JobStates newStatus = JobStates.valueOf( status.getString("StateCode") );
 				
-				System.out.println( "JobID: " + jobID + ", newState: " + DSCLJob.State.valueOf(newState) );
+				// update status
+				job.setStatus( newStatus );
 				
-				callListener( null, null );
+				// invoke listeners
+				for ( JobStateListener listener : job.getListeners() )
+					listener.stateChanged(job, newStatus );
 			} catch (ShutdownSignalException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			} catch (ConsumerCancelledException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			} catch (JSONException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}	
 		}

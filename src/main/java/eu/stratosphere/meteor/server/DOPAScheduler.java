@@ -16,7 +16,8 @@ import com.rabbitmq.client.QueueingConsumer;
 import com.rabbitmq.client.ShutdownSignalException;
 
 import eu.stratosphere.meteor.SchedulerConfigConstants;
-import eu.stratosphere.meteor.common.DSCLJob;
+import eu.stratosphere.meteor.client.DSCLJob;
+import eu.stratosphere.meteor.common.JobStates;
 import eu.stratosphere.meteor.server.executors.ClientObject;
 import eu.stratosphere.meteor.server.executors.RRjob;
 
@@ -29,8 +30,7 @@ import eu.stratosphere.meteor.server.executors.RRjob;
  * @author André Greiner-Petter
  *         T.shan
  */
-public class DOPAScheduler {
-	
+public class DOPAScheduler {	
 	/**
 	 * Factory to handle all connections with rabbitMQ
 	 */
@@ -44,14 +44,20 @@ public class DOPAScheduler {
 	private LinkedList<ClientObject> clients;
 	
 	/**
+	 * Paused main-loop flag
+	 */
+	private boolean paused = false;
+	
+	/**
 	 * Saves the current thread
 	 */
 	private final Thread schedulerThread = Thread.currentThread();
 	
 	/**
-	 * Create a new scheduler and connect it to all queues.
+	 * If you want to get a DOPAScheduler object please use the static method to create
+	 * once. Note that only one client per system is allowed.
 	 */
-	protected DOPAScheduler() {
+	private DOPAScheduler() {
 		this.connectionFactory = new ServerConnectionFactory();
 		this.clients = new LinkedList<ClientObject>();
 		this.allResults = new LinkedList<LinkedList<RRjob>>();
@@ -59,7 +65,7 @@ public class DOPAScheduler {
 	
 	/**
 	 * If you want to power up the scheduler on your system it's possible to
-	 * push up the priority of the scheduler thread. That's the best solution
+	 * push the priority of the scheduler thread. That's the best solution
 	 * to keep the time between two cycles (of main loop) as short as possible.
 	 * 
 	 * @param priority can be a value between Thread.MIN_PRIORITY and Thread.MAX_PRIORITY
@@ -71,76 +77,60 @@ public class DOPAScheduler {
 	}
 	
 	/**
-	 * @throws UnsupportedEncodingException 
 	 * 
 	 */
-	public void start() throws UnsupportedEncodingException {
-		String jobType = null;
-		String clientID = null;
-		String jobID = null;
-		String message = null;
-		
-		System.out.println( "[X Scheduler] Process started. Waiting for jobs...\n" );
-		
-		while( true ){
+	public void start() {
+		while( !paused ){
 			QueueingConsumer.Delivery delivery = connectionFactory.getRequest(100);
 			
-			// TODO
-			if (delivery == null) continue;
-			
-			String[] routingKey = delivery.getEnvelope().getRoutingKey().split("\\.");
-			
-			//System.out.println( "Got message with routing key: " + Arrays.toString( routingKey ) );
-			
-			// no registration
-			if ( routingKey[0].matches("register") ){
-				String name = new String( delivery.getBody(), delivery.getProperties().getContentEncoding() );
-				if ( routingKey[1].matches("login") ) {
-					System.out.println( "Add new client with name: " + name );
-					this.clients.add( new ClientObject( name ) );
-				}
-				//else this.clients.remove( new ClientObject( name ) ); //TODO
-			}
-			
-			JSONObject obj = new JSONObject();
-			try {
-				obj.put("JobID", "123");
-				obj.put("State", DSCLJob.State.RUNNING);
-			} catch (JSONException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-			
-			try {
-				connectionFactory.sendJobStatus(this.clients.getFirst().getClientID(), obj);
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-			
-			/*
-			//get relevant informations from queue(delivery)
-			message = new String( delivery.getBody() );			
 			String routingKey = delivery.getEnvelope().getRoutingKey();
+			String[] seperateKey = routingKey.split("\\.");
 			
-			String[] routingKeyArr=routingKey.split("\\.");
-			
-			
-						 
-			 //finished the saved jobs inbetween
-			 work();
-			 
-			 // the scheduler finished for this "round" of processes (message to CPU)
-			 Thread.yield();*/
+			if ( seperateKey[0].matches("") ){
+				
+			}
 		}
 	}
 	
-	public void stop() throws IOException {
+	/**
+	 * It restarts the system after you paused the scheduler.
+	 */
+	public void restart(){
+		if ( !paused ) return;
+		this.paused = false;
+		start();
+	}
+	
+	/**
+	 * Paused the scheduler. The scheduler finished last loop cycle and stopped until you restarts
+	 * the server. (Call restart() to do this)
+	 */
+	public void pause(){
+		this.paused = true;
+	}
+	
+	/**
+	 * Stops the scheduler service by shutdown all connections with RabbitMQ and close the
+	 * ServerConnectionFactory.
+	 * 
+	 * @throws IOException
+	 */
+	public void shutdown() throws IOException {
 		this.connectionFactory.shutdownConnections();
 	}
 	
-	protected void addClient(String clientID) {
-		// TODO
+	/**
+	 * Adds an incoming client to the scheduler services. Returns true if
+	 * the client got the rights to enter this service, false otherwise.
+	 * 
+	 * TODO 
+	 * 		- is the client allowed to register to this service?
+	 * 		- you're allowed to add some parameters you need to decide whether this client got the rights or not
+	 * 
+	 * @param clientID 
+	 * @return true if the client got the rights, false otherwise
+	 */
+	protected boolean addClient(String clientID) {
 		boolean foundClient=false; 
 		 for (ClientObject eachClient:clients){
 			 ClientObject tmp=eachClient;
@@ -153,9 +143,36 @@ public class DOPAScheduler {
 		 if(foundClient==false){
 			 clients.addLast(new ClientObject(clientID));
 		 }
+		 
+		 return true;
 	}
-
 	
+	/**
+	 * Creates and return a new Scheduler object. It just initialize all connections and create objects to
+	 * handle clients and jobs.
+	 * The returned scheduler doesn't work yet. You have to start the service to invoke start(). This starts
+	 * the loop of the service to handle all interactions. If you want to pause the scheduler without shutdown
+	 * you can call the pause() method. If you want to restart your system please use restart() method.
+	 * 
+	 * @return DOPAScheulder object in pause mode.
+	 */
+	public static DOPAScheduler createNewSchedulerSystem(){
+		return new DOPAScheduler();
+	}
+	
+	/**
+	 * TODO we have to discuss the best initialization way on the scheduler site.
+	 * @param args
+	 * @throws UnsupportedEncodingException
+	 */
+	public static void main( String[] args ) throws UnsupportedEncodingException{
+		DOPAScheduler scheduler = createNewSchedulerSystem();
+		scheduler.start();
+	}
+	
+	/** TODO - dead code follows to see how methods worked written by Tieyan - TODO **/
+
+	/*
 	//record new jobs to client
 	private synchronized void addJob(RRjob jobIn) {
 		
@@ -182,7 +199,7 @@ public class DOPAScheduler {
 			  System.out.println("New client's added in the waiting-list. JobID: "+jobIn.toString());
 			  
 		  }		  
-	}
+	}*/
 	
 	
 	/**
@@ -192,7 +209,7 @@ public class DOPAScheduler {
 	 * execute the content part of first String, and deleted this from List
 	 * add this List to LinkedList<LinkedList<String>> jobs again
 	*/
-	@SuppressWarnings("unchecked")
+	/*@SuppressWarnings("unchecked")
 	private synchronized void work(){
 	
 		try {
@@ -218,10 +235,9 @@ public class DOPAScheduler {
 				clients.add(currentClient);
 				
 			}else{
-				/* execute the meteor script from current client
-				 * get and delete the executed job, interrupted job would be lost 
-				 * other elements from the list still being available,
-				 */
+				// execute the meteor script from current client
+				// get and delete the executed job, interrupted job would be lost 
+				// other elements from the list still being available,
 				RRjob activJob=(currentClient.getfirstJob());
 				
 				System.out.println("Working on: "+activJob.toString());
@@ -279,9 +295,7 @@ public class DOPAScheduler {
 			  }
 		}	
 
-		/*
-		 * reload the result to client by given jobID/clientID
-		 */
+		//reload the result to client by given jobID/clientID
 		private String getResult(String clientID, String jobID) {
 			
 			String foundResult="Job is't finished.";
@@ -300,11 +314,5 @@ public class DOPAScheduler {
 			  }
 			return foundResult;	
 		}
-		
-
-		
-	public static void main( String[] args ) throws UnsupportedEncodingException{
-		DOPAScheduler scheduler = new DOPAScheduler();
-		scheduler.start();
-	}
+		*/
 }

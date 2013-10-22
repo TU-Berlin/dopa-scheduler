@@ -15,6 +15,15 @@ import com.rabbitmq.client.ShutdownSignalException;
 
 import eu.stratosphere.meteor.SchedulerConfigConstants;
 
+/**
+ * This class handle all traffic between RabbitMQ servers and the DOPA-Scheduler.
+ * Use this class as an interface for incoming and outgoing messages.
+ * 
+ * It handles incoming clients itself in a little handshake process.
+ *
+ * @author André Greiner-Petter
+ *
+ */
 public class ServerConnectionFactory {
 	
 	/**

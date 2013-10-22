@@ -1,0 +1,5 @@
+[gerrit]
+host=gerrit.formulasearchengine.com
+port=29418
+project=dopa-scheduler
+defaultbranch=master
