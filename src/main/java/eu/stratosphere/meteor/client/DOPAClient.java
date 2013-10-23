@@ -7,15 +7,14 @@ import java.util.Map;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.json.JSONException;
 import org.json.JSONObject;
 
 import com.rabbitmq.client.ConsumerCancelledException;
 import com.rabbitmq.client.ShutdownSignalException;
 
-import eu.stratosphere.meteor.common.ClientRequests;
-import eu.stratosphere.meteor.common.JobStateListener;
-import eu.stratosphere.meteor.common.JobStates;
+import eu.stratosphere.meteor.client.listener.JobStateListener;
+import eu.stratosphere.meteor.common.RequestType;
+import eu.stratosphere.meteor.common.JobState;
 
 /**
  * 
@@ -28,7 +27,10 @@ import eu.stratosphere.meteor.common.JobStates;
  * other method before the client is connected an exception being thrown.
  * 
  * To see status informations about the client it implements a logger from
- * {@link org.apache.commons.logging.Log}.
+ * {@link org.apache.commons.logging.Log}. Note that the hadoop-core version
+ * 0.20.2 bugs with a warning message about deprecated EventCounter. This bug
+ * is fixed with (currently) beta versions higher then 0.20.2.
+ * At the moment we use 0.20.205.0!
  *
  * @author 	André Greiner-Petter
  * 			Tieyan Shan
@@ -91,13 +93,13 @@ public class DOPAClient {
 	public void connect() {
 		// if the client is still connect
 		if ( this.connectionFac != null ) {
-			LOG.info( "The client is still connected. If you want to reconnect the client disconnect it first." );
+			LOG.warn( "The client is still connected. If you want to reconnect the client disconnect it first." );
 			return;
 		}
 		
 		// else try to connect it
 		try { this.connectionFac = new ClientConnectionFactory( this ); }
-		catch (Exception exc) { /*LOG.error( "Cannot connected to the scheduler services: " + exc.getMessage(), exc );*/ }
+		catch (Exception exc) { LOG.error( "Cannot connected to the scheduler services!", exc ); }
 	}
 	
 	/**
@@ -142,12 +144,15 @@ public class DOPAClient {
 	 * @param stateListener to inform state changes. You also can call this method in this way: {@code createNewJob( <String> );}
 	 * @return DSCLJob object of the submitted job
 	 */
-	public DSCLJob createNewJob( String meteorScript, JobStateListener... stateListener ){
+	public DSCLJob createNewJob( String meteorScript, JobStateListener... stateListener ) {
+		if ( this.connectionFac == null ) 
+			throw new UnsupportedOperationException("Your client isn't connected yet!");
+		
 		// create a jobID
 		String randomJobID = this.getRandomID();
 		
 		// create a job object
-		DSCLJob job = new DSCLJob( randomJobID, meteorScript );
+		DSCLJob job = new DSCLJob( this.connectionFac, randomJobID, meteorScript );
 		
 		// add listeners
 		for ( JobStateListener listener : stateListener )
@@ -165,45 +170,47 @@ public class DOPAClient {
 	}
 	
 	/**
-	 * This method ask the scheduler whether the specified job exists on server side. If it exists
-	 * the
+	 * This method ask the scheduler whether the specified job exists on server side or not. 
+	 * If it exists it adds the job to the current job list and add the stateListener to this object.
+	 * Otherwise this method change the status of the job object to INITIALIZE. Please be sure
+	 * you don't ask the scheduler for finished jobs as well. You find the current status (and whether
+	 * the job still finished) in the DSCLJob object, just invoke getStatus().
 	 * 
-	 * @param job
-	 * @param stateListener
+	 * @param job specified DSCLJob
+	 * @param stateListener you can invoke reconnectJob(DSCLJob job) as well or you add so much
+	 * 			listeners you want
 	 */
-	public void reconnectJob( DSCLJob job, JobStateListener stateListener ){
-		JSONObject requestObject = new JSONObject();	
+	public DSCLJob reconnectJob( String jobID, JobStateListener... stateListener ){
+		if ( this.connectionFac == null ) 
+			throw new UnsupportedOperationException("Your client isn't connected yet!");
 		
 		try {
-			requestObject.put( ClientRequests.REQUEST_KEY.toString(), ClientRequests.JOB_KNOWN.toString() );
-			requestObject.put( ClientRequests.JOBID_KEY.toString(), job.getID() );
-			requestObject.put( ClientRequests.JOBSTATE_KEY.toString(), job.getStatus().toString() );
-			
+			// build request
+			JSONObject requestObject = RequestType.JOB_EXISTS.createJSONRequest( clientID, jobID );
 			String corrID = this.getRandomID();
 			
-			this.connectionFac.sendRequest( requestObject, corrID );
-			String reply = this.connectionFac.getReply( corrID, 100);
+			// create new job object with state listeners
+			DSCLJob job = new DSCLJob( this.connectionFac, jobID, null );
+			for ( JobStateListener listener : stateListener )
+				job.addJobStateListener( listener );
 			
-			if ( reply != null && reply.matches("yes") ){
-				job.addJobStateListener(stateListener);
-				this.jobs.put(job.getID(), job);
-			} else {
-				job.setStatus( JobStates.INITIALIZE );
-			}
-		} catch( JSONException jsonE ){
-			// TODO
-		} catch (ShutdownSignalException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		} catch (ConsumerCancelledException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		} catch (InterruptedException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			job.setStatus( JobState.UNDEFINED );
+			
+			// send request
+			this.connectionFac.sendRequest( requestObject, corrID );
+			
+			/* TODO
+			 * no wait!
+			 * undefined job status, actualize status of job with informations (with script)
+			 */
+			
+			return job;
+		} catch ( ShutdownSignalException | ConsumerCancelledException | InterruptedException trafficE ) {
+			LOG.error("Communication failure!", trafficE);
+			return null;
+		} catch ( IOException ioE ) {
+			LOG.fatal("Unknown IOException!", ioE);
+			return null;
 		}
 	}
 	
@@ -229,6 +236,6 @@ public class DOPAClient {
 		client.connect();
 		
 		System.out.println( "connection erstellt." );
-		
+		//*/
 	}
 }

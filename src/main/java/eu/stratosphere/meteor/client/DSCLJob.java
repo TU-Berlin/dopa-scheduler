@@ -4,8 +4,9 @@ import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 
-import eu.stratosphere.meteor.common.JobStateListener;
-import eu.stratosphere.meteor.common.JobStates;
+import eu.stratosphere.meteor.client.job.ResultFileHandler;
+import eu.stratosphere.meteor.client.listener.JobStateListener;
+import eu.stratosphere.meteor.common.JobState;
 
 /**
  * Implements the comparable interface to define the differences between jobs.
@@ -22,9 +23,14 @@ public class DSCLJob{
 	private final String JOB_ID;
 	
 	/**
+	 * To handle traffic between a job object itself and the scheduler service
+	 */
+	private final ClientConnectionFactory connectionFac;
+	
+	/**
 	 * The current job status.
 	 */
-	private JobStates currState;
+	private JobState currState;
 	
 	/**
 	 * The script of this job.
@@ -43,10 +49,11 @@ public class DSCLJob{
 	 * @param ID to identify this job
 	 * @param meteorScript the script of this job
 	 */
-	protected DSCLJob( final String ID, String meteorScript ){
+	protected DSCLJob( final ClientConnectionFactory connectionFac, final String ID, String meteorScript ){
+		this.connectionFac = connectionFac;
 		this.JOB_ID = ID;
 		this.meteorScript = meteorScript;
-		this.currState = JobStates.INITIALIZE;
+		this.currState = JobState.INITIALIZE;
 		this.listeners = new LinkedList<JobStateListener>();
 	}
 	
@@ -54,35 +61,34 @@ public class DSCLJob{
 	 * Sets the new status of this job. It is protected so only the DOPAClient and the ClientConnectionFactory
 	 * can call this method to change status.
 	 * 
-	 * @param newState one of the enum JobStates
+	 * @param newState one of the enum JobState
 	 */
-	protected void setStatus( JobStates newState ){
+	protected void setStatus( JobState newState ){
 		this.currState = newState;
+	}
+	
+	/**
+	 * 
+	 * @param meteorScript
+	 */
+	protected void setMeteorScript( String meteorScript ){
+		this.meteorScript = meteorScript;
 	}
 	
 	/**
 	 * Returns the current status of this job
 	 * @return 
 	 */
-	public JobStates getStatus(){
+	public JobState getStatus(){
 		return currState;
 	}
 	
 	/**
-	 * Returns the ID
+	 * Returns the ID.
 	 * @return ID
 	 */
 	public String getID(){
 		return JOB_ID;
-	}
-	
-	public void getResult(){
-		// TODO return "file"
-	}
-	
-	public String getLink( String fileID ){
-		// TODO return link from file
-		return null;
 	}
 	
 	/**
@@ -93,16 +99,46 @@ public class DSCLJob{
 		return Collections.unmodifiableList( listeners );
 	}
 	
+	/**
+	 * Adds a new listener.
+	 * @param listener 
+	 * @return true if the collection changed
+	 */
 	public boolean addJobStateListener( JobStateListener listener ){
 		return this.listeners.add(listener);
 	}
 	
+	/**
+	 * Try to remove the specified listener.
+	 * @param listener
+	 * @return true if the collection changed
+	 */
 	public boolean removeJobStateListener( JobStateListener listener ){
 		return this.listeners.remove(listener);
 	}
 	
-	public void fetchResult( /* ProgessListener */ String fileID ){
-		// TODO 
+	/**
+	 * 
+	 * @param fileIndex
+	 * @param desiredBlockSize
+	 * @param maxNumberOfBlocks
+	 * @param handler
+	 */
+	public void requestResult( int fileIndex, long desiredBlockSize, long maxNumberOfBlocks, ResultFileHandler handler ){
+		/*
+		 * TODO
+		 * create ResultFileBlock with specified informations
+		 */
+	}
+	
+	/**
+	 * Get hdfs path of output file for use in follow-up jobs.
+	 * @param fileID
+	 * @return
+	 */
+	public String getLink( int fileIndex ){
+		// TODO return link from file
+		return null;
 	}
 	
 	public void abort( String clientID, String jobID ){

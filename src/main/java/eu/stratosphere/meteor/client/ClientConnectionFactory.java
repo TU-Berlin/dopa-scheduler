@@ -18,8 +18,8 @@ import com.rabbitmq.client.Envelope;
 import com.rabbitmq.client.AMQP;
 
 import eu.stratosphere.meteor.SchedulerConfigConstants;
-import eu.stratosphere.meteor.common.JobStateListener;
-import eu.stratosphere.meteor.common.JobStates;
+import eu.stratosphere.meteor.client.listener.JobStateListener;
+import eu.stratosphere.meteor.common.JobState;
 
 /**
  * This class sends requests and jobs to the server. It handle all connections
@@ -117,14 +117,21 @@ public class ClientConnectionFactory {
 				SchedulerConfigConstants.REQUEST_EXCHANGE, 
 				"register.login", 
 				props, 
-				client.getClientID().getBytes(charset) ); // TODO name and/or authentification informations
+				client.getClientID().getBytes(charset) );
 		
 		// wait for the name of status exchange to bind our status queue to this exchange
 		QueueingConsumer.Delivery delivery = handShakeConsumer.nextDelivery();
 		String status_exchange = new String( delivery.getBody(), charset );
 		
-		// bind the queue with the exchange
-		this.statusChannel.queueBind( this.statusQueue, status_exchange, SchedulerConfigConstants.getRoutingKey(client.getClientID()) );
+		if ( !status_exchange.matches("sorry") ){
+			// bind the queue with the exchange
+			this.statusChannel.queueBind( 
+					this.statusQueue, 
+					status_exchange, 
+					SchedulerConfigConstants.getRoutingKey( client.getClientID() ) );
+		} else {
+			// TODO
+		}
 		
 		// close and delete all handshake components
 		this.requestChannel.basicCancel( "handShakeConsumer" );
@@ -344,7 +351,7 @@ public class ClientConnectionFactory {
 				// get informations to update specified job
 				String jobID = status.getString("JobID");
 				DSCLJob job = client.getJobList().get( jobID );
-				JobStates newStatus = JobStates.valueOf( status.getString("StateCode") );
+				JobState newStatus = JobState.valueOf( status.getString("StateCode") );
 				
 				// update status
 				job.setStatus( newStatus );

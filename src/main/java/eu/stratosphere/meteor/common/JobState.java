@@ -7,8 +7,9 @@ package eu.stratosphere.meteor.common;
  * @author André Greiner-Petter
  *
  */
-public enum JobStates {
+public enum JobState {
 	// job states
+	UNDEFINED("Undefined job status"),
 	INITIALIZE("Initialize blank job object."), 
 	SUBMIT("Job submitted to scheduler."), 
 	WAITING("Job sitting on the waiting queue of the scheduler. Doesn't executed yet."), 
@@ -23,7 +24,7 @@ public enum JobStates {
 	 * Private constructor to set the descriptions
 	 * @param code
 	 */
-	private JobStates( String message ){
+	private JobState( String message ){
 		this.message = message;
 	}
 	

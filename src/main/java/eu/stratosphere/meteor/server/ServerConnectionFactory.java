@@ -65,6 +65,11 @@ public class ServerConnectionFactory {
 	private final String charset = "UTF-8";
 	
 	/**
+	 * The scheduler which uses this connection factory.
+	 */
+	private final DOPAScheduler scheduler;
+	
+	/**
 	 * Connection objects
 	 */
 	private ConnectionFactory connectionFactory;
@@ -76,7 +81,9 @@ public class ServerConnectionFactory {
 	 * This default constructor initialize all connections and queues for the complete server side.
 	 * To change settings for this you have to change the constants in {@link SchedulerConfigConstants}.
 	 */
-	protected ServerConnectionFactory(){
+	protected ServerConnectionFactory( final DOPAScheduler scheduler ){
+		this.scheduler = scheduler;
+		
 		System.out.print( "[X Scheduler] Initialize connections to RabbitMQ" );
 		
 		// create connection connectionFactory
@@ -187,20 +194,29 @@ public class ServerConnectionFactory {
 	 * 
 	 * @param handShakeType can be 'login' or 'logoff'
 	 */
-	private void register( QueueingConsumer.Delivery delivery ) throws IOException {		
+	private void subscribe( QueueingConsumer.Delivery delivery ) throws IOException {		
 		String replyQueue = delivery.getProperties().getReplyTo();
 		String encoding = delivery.getProperties().getContentEncoding();
 		
-		//boolean isAllowed = DOPAScheduler.addClient( new String( delivery.getBody(), encoding ) );
+		// try to add new client
+		boolean isAllowed = scheduler.addClient( new String( delivery.getBody(), encoding ) );
 		
-		// TODO if false the client needs to know it
-		
-		this.requestChannel.basicPublish(
-				"", 
-				replyQueue, 
-				delivery.getProperties(), 
-				STATUS_EXCHANGE.getBytes( encoding )
-				);
+		// if client added as well
+		if ( isAllowed ){
+			this.requestChannel.basicPublish(
+					"", 
+					replyQueue, 
+					delivery.getProperties(), 
+					STATUS_EXCHANGE.getBytes( encoding )
+					);
+		} else { // else return error code
+			this.requestChannel.basicPublish(
+					"", 
+					replyQueue, 
+					delivery.getProperties(), 
+					"sorry".getBytes( encoding ) // TODO JSONObject?
+					);
+		}
 	}
 	
 	/**
@@ -284,14 +300,15 @@ public class ServerConnectionFactory {
 			// get the routing key from delivery (not from properties)
 			String[] routingKey = delivery.getEnvelope().getRoutingKey().split("\\.");
 			
-			// no registration
-			if ( routingKey[0].matches("register") && routingKey[1].matches("login") ) this.register( delivery );
+			// registration
+			if ( routingKey[0].matches("register") && routingKey[1].matches("login") ) 
+				this.subscribe( delivery );
 			
-			// handle registration
-			//if ( routingKey[1].matches("login") ) this.register( delivery );
-			//else DOPAScheduler.deleteClient( new String( delivery.getBody(), delivery.getProperties().getContentEncoding() ) );
-			//TODO
-			return delivery;
+			// TODO unsubscribe
+			if ( routingKey[0].matches("register") && routingKey[1].matches("logoff") )
+				this.scheduler.removeClient( new String( delivery.getBody(), delivery.getProperties().getContentEncoding() ));
+			
+			return null;
 		} catch ( IOException | ShutdownSignalException | ConsumerCancelledException | InterruptedException exc ) {
 			// any error encountered while waiting
 			System.err.println("An error encountered while waiting for new deliveries!");

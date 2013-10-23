@@ -17,7 +17,7 @@ import com.rabbitmq.client.ShutdownSignalException;
 
 import eu.stratosphere.meteor.SchedulerConfigConstants;
 import eu.stratosphere.meteor.client.DSCLJob;
-import eu.stratosphere.meteor.common.JobStates;
+import eu.stratosphere.meteor.common.JobState;
 import eu.stratosphere.meteor.server.executors.ClientObject;
 import eu.stratosphere.meteor.server.executors.RRjob;
 
@@ -34,7 +34,7 @@ public class DOPAScheduler {
 	/**
 	 * Factory to handle all connections with rabbitMQ
 	 */
-	private final ServerConnectionFactory connectionFactory;
+	private ServerConnectionFactory connectionFactory;
 	
 	/**
 	 * new received jobs will be saved in allJobs
@@ -58,9 +58,12 @@ public class DOPAScheduler {
 	 * once. Note that only one client per system is allowed.
 	 */
 	private DOPAScheduler() {
-		this.connectionFactory = new ServerConnectionFactory();
 		this.clients = new LinkedList<ClientObject>();
 		this.allResults = new LinkedList<LinkedList<RRjob>>();
+	}
+	
+	private void connect() {
+		this.connectionFactory = new ServerConnectionFactory( this );
 	}
 	
 	/**
@@ -77,18 +80,67 @@ public class DOPAScheduler {
 	}
 	
 	/**
-	 * 
+	 * Starts the main loop of the scheduler. Handle deliveries like requests or new jobs
+	 * and execute other jobs with the round robin algorithm. Inform clients about new job
+	 * states and possibly error messages.
+	 * You can pause the system by using pause() and restart it with restart(). If you paused
+	 * the system you cannot invoke this method to restarts the server. Please use restart().
 	 */
 	public void start() {
 		while( !paused ){
 			QueueingConsumer.Delivery delivery = connectionFactory.getRequest(100);
 			
-			String routingKey = delivery.getEnvelope().getRoutingKey();
-			String[] seperateKey = routingKey.split("\\.");
+			/* TODO 
+			 * if no delivery incoming and no jobs to execute we can jump to Thread.yield()
+			 * in this case is way better to use Thread.sleep() instead of Thread.yield()
+			 */
 			
-			if ( seperateKey[0].matches("") ){
+			if ( delivery != null ){			
+				// handle incoming messages
+				String routingKey = delivery.getEnvelope().getRoutingKey();
+				String[] seperateKey = routingKey.split("\\.");
 				
-			}
+				switch ( seperateKey[0] ){
+				case "requestStatus":
+					/*
+					 * TODO
+					 * handle all kind of requests here. See ClientReqeusts.java (in common package) for request types
+					 * each request contains a JSONObject, see RequestType.java for it as well
+					 */
+					break;
+				case "setJob":
+					/*
+					 * TODO
+					 * handle incoming jobs. the seperateKey contains more informations about the job.
+					 * See ServerConnectionFactory.JOB_KEY_MASK for more informations
+					 */
+					break;
+				} // end switch-case
+			} // end if delivery != null
+			
+			/**
+			 * TODO
+			 * execute jobs via round robin algorithm here
+			 */
+			
+			/**
+			 * TODO
+			 * inform clients about new states or some other stuff here
+			 */
+			
+			/**
+			 * TODO
+			 * possibly traffic with hadoop here
+			 */
+			
+			/**
+			 * TODO all other stuff here
+			 * maybe clean garbage like delete finished jobs or something like that
+			 * inform clients if you want to delete something, we have to discuss it as well
+			 */
+			
+			// System yield, to keep this time as short as possible use setSchedulerPriority( int priority )
+			Thread.yield();
 		}
 	}
 	
@@ -148,6 +200,15 @@ public class DOPAScheduler {
 	}
 	
 	/**
+	 * TODO same as addClient...
+	 * @param clientID
+	 * @return
+	 */
+	protected boolean removeClient( String clientID ){
+		return true;
+	}
+	
+	/**
 	 * Creates and return a new Scheduler object. It just initialize all connections and create objects to
 	 * handle clients and jobs.
 	 * The returned scheduler doesn't work yet. You have to start the service to invoke start(). This starts
@@ -157,7 +218,9 @@ public class DOPAScheduler {
 	 * @return DOPAScheulder object in pause mode.
 	 */
 	public static DOPAScheduler createNewSchedulerSystem(){
-		return new DOPAScheduler();
+		DOPAScheduler scheduler = new DOPAScheduler();
+		scheduler.connect();
+		return scheduler;
 	}
 	
 	/**
@@ -242,7 +305,7 @@ public class DOPAScheduler {
 				
 				System.out.println("Working on: "+activJob.toString());
 
-				//TODO this if-block(requestStatus) is kept only for test phase				
+				//this if-block(requestStatus) is kept only for test phase				
 				//The Jobs in allResult may also be asked for status
 				if(activJob.getjType().equals("requestStatus")){
 					
@@ -270,7 +333,7 @@ public class DOPAScheduler {
 						status.append("status", activJob.getStatus());
 							this.connectionFactory.sendJobStatus(activJob.getClientID(), status);
 					} catch (IOException | JSONException e) {
-						// TODO Auto-generated catch block
+						// Auto-generated catch block
 						e.printStackTrace();
 					}
 					
