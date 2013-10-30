@@ -60,7 +60,7 @@ public final class SchedulerConfigConstants {
 	 * TODO which informations contains the routing key?
 	 * Routing Key: requestStatus
 	 */
-	public static final String REQUEST_KEY_MASK = "requestStatus";
+	public static final String REQUEST_KEY_MASK = "request";
 	
 	/**
 	 * The routing key mask for hand shakes. Use this to register a client at
@@ -72,6 +72,11 @@ public final class SchedulerConfigConstants {
 	 * or	register.logoff
 	 */
 	public static final String REGISTER_KEY_MASK = "register.*";
+	
+	/**
+	 * Content type of json in a string format
+	 */
+	public static final String JSON = "application/json";
 	
 	/**
 	 * Generate a key by given queueName. This method warrant consistency.

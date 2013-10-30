@@ -14,12 +14,12 @@ import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.ConsumerCancelledException;
 import com.rabbitmq.client.QueueingConsumer;
 import com.rabbitmq.client.ShutdownSignalException;
-import com.rabbitmq.client.Envelope;
-import com.rabbitmq.client.AMQP;
 
 import eu.stratosphere.meteor.SchedulerConfigConstants;
-import eu.stratosphere.meteor.client.listener.JobStateListener;
-import eu.stratosphere.meteor.common.JobState;
+import eu.stratosphere.meteor.client.connection.LinkConsumer;
+import eu.stratosphere.meteor.client.connection.ResultConsumer;
+import eu.stratosphere.meteor.client.connection.StatusConsumer;
+import eu.stratosphere.meteor.common.RequestConsumable;
 
 /**
  * This class sends requests and jobs to the server. It handle all connections
@@ -53,6 +53,8 @@ public class ClientConnectionFactory {
 	protected ClientConnectionFactory( final DOPAClient client ) throws Exception {		
 		this.client = client;
 		
+		DOPAClient.LOG.info("Initialize connections to RabbitMQ.");
+		
 		// build a connection
 		connectFactory = new ConnectionFactory();
 		connectFactory.setHost( SchedulerConfigConstants.SCHEDULER_HOST_ADDRESS );
@@ -71,8 +73,10 @@ public class ClientConnectionFactory {
 			this.subscribe();
 			
 			// consume the status queue
-			this.staticStatusConsumer = new StatusConsumer( statusChannel );
+			this.staticStatusConsumer = new StatusConsumer( this, client, statusChannel );
 			this.statusChannel.basicConsume( statusQueue, true, staticStatusConsumer );
+			
+			DOPAClient.LOG.info("Succeeded. You are connected to the DOPA scheduler system. Happy developing.");
 		} catch ( ShutdownSignalException 
 				| ConsumerCancelledException
 				| InterruptedException e ) {
@@ -130,7 +134,7 @@ public class ClientConnectionFactory {
 					status_exchange, 
 					SchedulerConfigConstants.getRoutingKey( client.getClientID() ) );
 		} else {
-			// TODO
+			DOPAClient.LOG.error("Not allowed to connect with the scheduler. Fail handshake process.");
 		}
 		
 		// close and delete all handshake components
@@ -160,6 +164,24 @@ public class ClientConnectionFactory {
 	}
 	
 	/**
+	 * Returns a ResultConsumer object connected to the requestChannel.
+	 * @param corrID correlation ID of the request
+	 * @return result consumer
+	 */
+	public ResultConsumer getResultConsumer( String corrID ){
+		return new ResultConsumer( this.client, this.requestChannel, corrID );
+	}
+	
+	/**
+	 * Returns a LinkConsumer object connected to the requestChannel.
+	 * @param corrID correlation ID of the request
+	 * @return link consumer
+	 */
+	public LinkConsumer getLinkConsumer( String corrID ){
+		return new LinkConsumer( this.client, this.requestChannel, corrID );
+	}
+	
+	/**
 	 * Returns the status object for a job. If there are no status currently available it
 	 * returns null and send a request to the scheduler to get informations about the status.
 	 * 
@@ -177,7 +199,7 @@ public class ClientConnectionFactory {
 	 * @throws JSONException if we cannot rebuild a json object from message
 	 * @throws IOException if we cannot send the request
 	 */
-	protected JSONObject getStatus( long timeOut ) 
+	public JSONObject getStatus( long timeOut ) 
 			throws ShutdownSignalException, ConsumerCancelledException, InterruptedException, 
 			UnsupportedEncodingException, JSONException, IOException 
 			{
@@ -197,7 +219,7 @@ public class ClientConnectionFactory {
 			return new JSONObject( jsonString );
 		}
 		
-		sendRequest( new JSONObject().put("Request", "status"), "1" );
+		sendRequest( null, new JSONObject().put("Request", "status"), "1" );
 		return null;
 	}
 
@@ -210,10 +232,11 @@ public class ClientConnectionFactory {
 	 * @param jobID to specify this job
 	 * @throws IOException
 	 */
-	protected void submitJob( String meteorScript, String clientID, String jobID ) throws IOException {
+	public void submitJob( String meteorScript, String clientID, String jobID ) throws IOException {
 		BasicProperties jobProps = new BasicProperties
 				.Builder()
 				.contentEncoding(charset)
+				.contentType( SchedulerConfigConstants.JSON )
 				.timestamp( new Date() )
 				.build();
 		
@@ -223,6 +246,8 @@ public class ClientConnectionFactory {
 	    		jobProps,
 	    		meteorScript.getBytes( charset )
 	    		);
+		
+		DOPAClient.LOG.info("Job submitted!");
 	}
 	
 	/**
@@ -234,7 +259,7 @@ public class ClientConnectionFactory {
 	 * @throws ConsumerCancelledException 
 	 * @throws ShutdownSignalException 
 	 */
-	protected void sendRequest( JSONObject request, String correlationID ) throws IOException, 
+	public void sendRequest( QueueingConsumer consumer, JSONObject request, String correlationID ) throws IOException, 
 			ShutdownSignalException, ConsumerCancelledException, InterruptedException
 			{
 		// if there is an old staticStatusConsumer waiting for replies
@@ -251,20 +276,28 @@ public class ClientConnectionFactory {
 				.Builder()
 				.correlationId( correlationID )
 				.replyTo( replyQueue )
+				.contentType( SchedulerConfigConstants.JSON )
 				.contentEncoding( charset )
 				.build();
 		
-		// consume reply queue
-		this.tmpRequestConsumer = new QueueingConsumer( requestChannel );
-		this.requestChannel.basicConsume(replyQueue, false, "replyConsumer", tmpRequestConsumer);
+		// if given consumer is not null and request consumable it handle replies of this request!
+		if ( consumer != null && consumer instanceof RequestConsumable ){
+			this.requestChannel.basicConsume(replyQueue, false, consumer);
+		} else { // else we handle request on old school technique
+			// consume reply queue
+			this.tmpRequestConsumer = new QueueingConsumer( requestChannel );
+			this.requestChannel.basicConsume(replyQueue, false, "replyConsumer", tmpRequestConsumer);
+		}
 		
 		// send request
 		requestChannel.basicPublish(
 				SchedulerConfigConstants.REQUEST_EXCHANGE, 
-				"requestStatus", // TODO which informations are needed in routingKey?
+				SchedulerConfigConstants.REQUEST_KEY_MASK,
 				replyProps,
 				request.toString().getBytes()
 				);
+		
+		DOPAClient.LOG.info("Send request: " + request);
 	}
 	
 	/**
@@ -277,7 +310,7 @@ public class ClientConnectionFactory {
 	 * @throws ConsumerCancelledException if this staticStatusConsumer doesn't exist anymore
 	 * @throws IOException if cannot cancel the tmpRequestConsumer
 	 */
-	protected String getReply( String correlationID, long timeOut ) throws ConsumerCancelledException, IOException{
+	public String getReply( String correlationID, long timeOut ) throws ConsumerCancelledException, IOException{
 		try {
 			// get reply from reply queue
 			QueueingConsumer.Delivery reply = tmpRequestConsumer.nextDelivery( timeOut );
@@ -314,60 +347,5 @@ public class ClientConnectionFactory {
 		this.unsubscribe();
 		this.requestChannel.close();
 		this.connection.close();
-	}
-	
-	/**
-	 * This class extends the QueueingConsumer and handle deliveries in a special way.
-	 * The consumer sets the new status to the specified DSCLJob.
-	 *
-	 * @author André Greiner-Petter
-	 */
-	private class StatusConsumer extends QueueingConsumer {
-		
-		/**
-		 * Super constructor
-		 * @param ch
-		 */
-		public StatusConsumer( Channel ch ) {
-			super(ch);
-		}
-		
-		/**
-		 * Message handle incoming deliveries. These messages are status updates. This consumer
-		 * updates the states of jobs and invoke stateChanged if this job got one or more
-		 * JobStateListeners.
-		 */
-		@Override
-		public void handleDelivery( String consumerTag, Envelope envelope, AMQP.BasicProperties properties, byte[] body )
-				throws IOException {
-			// forward delivery
-			super.handleDelivery(consumerTag, envelope, properties, body);
-			
-			// try to handle new object
-			try {
-				// create status object
-				JSONObject status = getStatus( 0 );
-				
-				// get informations to update specified job
-				String jobID = status.getString("JobID");
-				DSCLJob job = client.getJobList().get( jobID );
-				JobState newStatus = JobState.valueOf( status.getString("StateCode") );
-				
-				// update status
-				job.setStatus( newStatus );
-				
-				// invoke listeners
-				for ( JobStateListener listener : job.getListeners() )
-					listener.stateChanged(job, newStatus );
-			} catch (ShutdownSignalException e) {
-				e.printStackTrace();
-			} catch (ConsumerCancelledException e) {
-				e.printStackTrace();
-			} catch (InterruptedException e) {
-				e.printStackTrace();
-			} catch (JSONException e) {
-				e.printStackTrace();
-			}	
-		}
 	}
 }

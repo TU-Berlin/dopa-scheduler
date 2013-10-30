@@ -2,7 +2,6 @@ package eu.stratosphere.meteor.client.job;
 
 import eu.stratosphere.meteor.client.DSCLJob;
 
-
 /**
  * This interface is responsible for handling the individual blocks that get delivered to the client.
  *

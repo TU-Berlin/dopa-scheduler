@@ -12,8 +12,8 @@ import org.json.JSONObject;
 import com.rabbitmq.client.ConsumerCancelledException;
 import com.rabbitmq.client.ShutdownSignalException;
 
-import eu.stratosphere.meteor.client.listener.JobStateListener;
-import eu.stratosphere.meteor.common.RequestType;
+import eu.stratosphere.meteor.client.job.JobStateListener;
+import eu.stratosphere.meteor.common.MessageBuilder;
 import eu.stratosphere.meteor.common.JobState;
 
 /**
@@ -72,7 +72,7 @@ public class DOPAClient {
 	 * Calculate a random ID.
 	 * @return random ID
 	 */
-	private String getRandomID(){
+	public static String getRandomID(){
 		return java.util.UUID.randomUUID().toString();
 	}
 	
@@ -99,7 +99,7 @@ public class DOPAClient {
 		
 		// else try to connect it
 		try { this.connectionFac = new ClientConnectionFactory( this ); }
-		catch (Exception exc) { LOG.error( "Cannot connected to the scheduler services!", exc ); }
+		catch ( Exception exc ) { LOG.error( "Cannot connected to the scheduler services!", exc ); }
 	}
 	
 	/**
@@ -149,10 +149,10 @@ public class DOPAClient {
 			throw new UnsupportedOperationException("Your client isn't connected yet!");
 		
 		// create a jobID
-		String randomJobID = this.getRandomID();
+		String randomJobID = DOPAClient.getRandomID();
 		
 		// create a job object
-		DSCLJob job = new DSCLJob( this.connectionFac, randomJobID, meteorScript );
+		DSCLJob job = new DSCLJob( this.connectionFac, this.clientID, randomJobID, meteorScript );
 		
 		// add listeners
 		for ( JobStateListener listener : stateListener )
@@ -186,24 +186,24 @@ public class DOPAClient {
 		
 		try {
 			// build request
-			JSONObject requestObject = RequestType.JOB_EXISTS.createJSONRequest( clientID, jobID );
-			String corrID = this.getRandomID();
+			JSONObject requestObject = MessageBuilder.buildJobExistsRequest(clientID, jobID);
+			String corrID = DOPAClient.getRandomID();
 			
 			// create new job object with state listeners
-			DSCLJob job = new DSCLJob( this.connectionFac, jobID, null );
+			DSCLJob job = new DSCLJob( this.connectionFac, this.clientID, jobID, null );
 			for ( JobStateListener listener : stateListener )
 				job.addJobStateListener( listener );
 			
+			// undefined status
 			job.setStatus( JobState.UNDEFINED );
 			
+			// add job to internal list
+			this.jobs.put( jobID, job);
+			
 			// send request
-			this.connectionFac.sendRequest( requestObject, corrID );
+			this.connectionFac.sendRequest( null, requestObject, corrID );
 			
-			/* TODO
-			 * no wait!
-			 * undefined job status, actualize status of job with informations (with script)
-			 */
-			
+			// return
 			return job;
 		} catch ( ShutdownSignalException | ConsumerCancelledException | InterruptedException trafficE ) {
 			LOG.error("Communication failure!", trafficE);
@@ -227,15 +227,31 @@ public class DOPAClient {
 		return new DOPAClient( ID );
 	}
 	
-	/** TODO - only test area follow - TODO **/
-	public static void main( String[] args ){
+	/** TODO - only test area follow - TODO 
+	 * @throws InterruptedException **/
+	public static void main( String[] args ) throws InterruptedException{
 		DOPAClient client = createNewClient( "TanteEmma" );
 		
-		System.out.println( "client erstellt" );
+		//System.out.println( "client erstellt" );
 		
 		client.connect();
 		
-		System.out.println( "connection erstellt." );
+		//System.out.println( "connection erstellt." );
+		//*/
+		
+		DSCLJob job = client.createNewJob("huhu");
+		
+		System.out.println( job.getStatus() );
+		
+		Thread.sleep(2000);
+		
+		System.out.println( job.getStatus() );
+		//*/
+		/*System.out.println(job.getResultLink(0));
+		job.getLink(0);
+		
+		Thread.sleep(2000);
+		System.out.println( job.getResultLink(0) );
 		//*/
 	}
 }

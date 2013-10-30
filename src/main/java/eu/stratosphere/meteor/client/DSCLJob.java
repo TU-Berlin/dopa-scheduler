@@ -1,12 +1,25 @@
 package eu.stratosphere.meteor.client;
 
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 
+import org.json.JSONObject;
+
+import com.rabbitmq.client.ConsumerCancelledException;
+import com.rabbitmq.client.ShutdownSignalException;
+
+import eu.stratosphere.meteor.client.connection.LinkConsumer;
+import eu.stratosphere.meteor.client.connection.ResultConsumer;
+import eu.stratosphere.meteor.client.job.JobStateListener;
 import eu.stratosphere.meteor.client.job.ResultFileHandler;
-import eu.stratosphere.meteor.client.listener.JobStateListener;
 import eu.stratosphere.meteor.common.JobState;
+import eu.stratosphere.meteor.common.MessageBuilder;
 
 /**
  * Implements the comparable interface to define the differences between jobs.
@@ -21,6 +34,11 @@ public class DSCLJob{
 	 * Unique job ID to identify this job
 	 */
 	private final String JOB_ID;
+	
+	/**
+	 * Unique client ID
+	 */
+	private final String CLIENT_ID;
 	
 	/**
 	 * To handle traffic between a job object itself and the scheduler service
@@ -43,18 +61,38 @@ public class DSCLJob{
 	private LinkedList<JobStateListener> listeners;
 	
 	/**
+	 * Map of all result file handlers. Key is the value of file index.
+	 * This key is unique for each job.
+	 */
+	private HashMap<Integer, ResultFileHandler> resultHandler;
+	
+	/**
+	 * This map contains the result file for its specified index. Normally null.
+	 */
+	private HashMap<Integer, File> results;
+	
+	/**
+	 * Map of internal links. Filled after send a requests
+	 */
+	private HashMap<Integer, String> linksOfResults;
+	
+	/**
 	 * Create a new DSCLJob object. It needs to get the connection factory to register JobStateListeners.
 	 * 
 	 * @param connectionFac to register state listeners
-	 * @param ID to identify this job
+	 * @param jobID to identify this job
 	 * @param meteorScript the script of this job
 	 */
-	protected DSCLJob( final ClientConnectionFactory connectionFac, final String ID, String meteorScript ){
+	protected DSCLJob( final ClientConnectionFactory connectionFac, final String clientID, final String jobID, String meteorScript ){
 		this.connectionFac = connectionFac;
-		this.JOB_ID = ID;
+		this.CLIENT_ID = clientID;
+		this.JOB_ID = jobID;
 		this.meteorScript = meteorScript;
 		this.currState = JobState.INITIALIZE;
 		this.listeners = new LinkedList<JobStateListener>();
+		this.linksOfResults = new HashMap<Integer, String>();
+		this.resultHandler = new HashMap<Integer, ResultFileHandler>();
+		this.results = new HashMap<Integer, File>();
 	}
 	
 	/**
@@ -63,21 +101,58 @@ public class DSCLJob{
 	 * 
 	 * @param newState one of the enum JobState
 	 */
-	protected void setStatus( JobState newState ){
+	public void setStatus( JobState newState ){
+		// TODO security?
 		this.currState = newState;
 	}
 	
 	/**
-	 * 
+	 * Sets meteor script (not visible for normal users)
 	 * @param meteorScript
 	 */
-	protected void setMeteorScript( String meteorScript ){
+	public void setMeteorScript( String meteorScript ){
+		// TODO security?
 		this.meteorScript = meteorScript;
 	}
 	
 	/**
+	 * Deletes the handler for result file.
+	 * @param fileIdx specify result
+	 */
+	public void deleteStatusHandler( int fileIdx ){
+		// TODO security?
+		this.resultHandler.remove( fileIdx );
+	}
+	
+	/**
+	 * Sets the output path.
+	 * @param index of result link in job
+	 * @param path itself
+	 */
+	public void setResultLink( int index, String path ){
+		this.linksOfResults.put( index, path );
+	}
+	
+	/**
+	 * It adds the result file specified by file index to internal list of all results.
+	 * @param fileIdx of result
+	 * @param file result
+	 */
+	public void setResultFile( int fileIdx, File file ){
+		this.results.put( fileIdx, file );
+	}
+	
+	/**
+	 * Returns the map of all results saved on this job.
+	 * @return a modifiable map of results
+	 */
+	public HashMap<Integer, File> getResults() {
+		return results;
+	}
+	
+	/**
 	 * Returns the current status of this job
-	 * @return 
+	 * @return current job status
 	 */
 	public JobState getStatus(){
 		return currState;
@@ -92,10 +167,33 @@ public class DSCLJob{
 	}
 	
 	/**
-	 * Returns an unmodifiable list of all listeners of this job.
-	 * @return
+	 * @return meteor script
 	 */
-	protected List<JobStateListener> getListeners(){
+	public String getMeteorScript(){
+		return meteorScript;
+	}
+	
+	/**
+	 * Return the link of a specified result.
+	 * @return link
+	 */
+	public String getResultLink( int index ){
+		return linksOfResults.get( index );
+	}
+	
+	/**
+	 * Returns an unmodifiable list of all result handlers currently executing on this job.
+	 * @return map with key for file index and the specified handler
+	 */
+	public Map<Integer, ResultFileHandler> getResultHandler(){
+		return Collections.unmodifiableMap(resultHandler);
+	}
+	
+	/**
+	 * Returns an unmodifiable list of all listeners of this job.
+	 * @return list of all listeners
+	 */
+	public List<JobStateListener> getListeners(){
 		return Collections.unmodifiableList( listeners );
 	}
 	
@@ -118,17 +216,30 @@ public class DSCLJob{
 	}
 	
 	/**
-	 * 
-	 * @param fileIndex
-	 * @param desiredBlockSize
-	 * @param maxNumberOfBlocks
-	 * @param handler
+	 * Sends a request to get specified blocks of result file by specified index.
+	 * @param fileIndex of result file
+	 * @param desiredBlockSize size of block you want for one block, scheduler can choose own sizes if necessary
+	 * @param maxNumberOfBlocks threshold for blocks
+	 * @param handler to handle each incoming block and put them all together
 	 */
-	public void requestResult( int fileIndex, long desiredBlockSize, long maxNumberOfBlocks, ResultFileHandler handler ){
-		/*
-		 * TODO
-		 * create ResultFileBlock with specified informations
-		 */
+	public void requestResult( int fileIndex, int desiredBlockSize, long maxNumberOfBlocks, ResultFileHandler handler ){
+		try {
+			// build message
+			JSONObject request = MessageBuilder.buildRequestResult(CLIENT_ID, JOB_ID, fileIndex, desiredBlockSize, maxNumberOfBlocks);
+			
+			// add given handler to internal list
+			this.resultHandler.put( fileIndex, handler );
+			
+			// create result consumer to refresh states and invoke handlers automatically
+			String corrID = DOPAClient.getRandomID();
+			ResultConsumer consumer = this.connectionFac.getResultConsumer(corrID);
+			
+			// finally send the request
+			this.connectionFac.sendRequest(consumer, request, corrID);
+		} catch (ShutdownSignalException | ConsumerCancelledException
+				| IOException | InterruptedException e) {
+			DOPAClient.LOG.error("Cannot send result request to scheduler.", e);
+		}
 	}
 	
 	/**
@@ -136,16 +247,30 @@ public class DSCLJob{
 	 * @param fileID
 	 * @return
 	 */
-	public String getLink( int fileIndex ){
-		// TODO return link from file
-		return null;
+	public void getLink( int fileIndex ){
+		try { // build request object and send message
+			JSONObject request = MessageBuilder.buildGetLink(CLIENT_ID, JOB_ID, fileIndex);
+			
+			String corrID = DOPAClient.getRandomID();
+			LinkConsumer consumer = this.connectionFac.getLinkConsumer(corrID);
+			this.connectionFac.sendRequest(consumer, request, corrID );
+		} catch (ShutdownSignalException | ConsumerCancelledException
+				| IOException | InterruptedException e) {
+			DOPAClient.LOG.error( "Cannot send request to abort a job.", e ); 
+		}
 	}
 	
-	public void abort( String clientID, String jobID ){
-		// TODO
-	}
-	
-	public void resumeJob( String clientID, String jobID ){
-		// TODO
+	/**
+	 * Its abort this specified job on the scheduler site. This job is deleted when the current status
+	 * is {@code JobState.DELETED}.
+	 */
+	public void abortJob(){
+		try { // build request object and send message
+			JSONObject request = MessageBuilder.buildJobAbort(CLIENT_ID, JOB_ID);
+			this.connectionFac.sendRequest(null, request, DOPAClient.getRandomID() );
+		} catch (ShutdownSignalException | ConsumerCancelledException
+				| IOException | InterruptedException e) {
+			DOPAClient.LOG.error( "Cannot send request to abort a job.", e ); 
+		}
 	}
 }

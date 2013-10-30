@@ -9,7 +9,8 @@ package eu.stratosphere.meteor.common;
  */
 public enum JobState {
 	// job states
-	UNDEFINED("Undefined job status"),
+	UNDEFINED("Undefined job status."), // undefined means it has no script yet
+	DELETED("Deleted from scheduler."), // only possible after requested whether this job exists
 	INITIALIZE("Initialize blank job object."), 
 	SUBMIT("Job submitted to scheduler."), 
 	WAITING("Job sitting on the waiting queue of the scheduler. Doesn't executed yet."), 

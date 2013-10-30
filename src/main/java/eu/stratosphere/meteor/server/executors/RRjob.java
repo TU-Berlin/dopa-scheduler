@@ -2,16 +2,19 @@ package eu.stratosphere.meteor.server.executors;
 
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Date;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 
 import eu.stratosphere.meteor.client.ClientFrontend;
+import eu.stratosphere.meteor.common.JobState;
 import eu.stratosphere.sopremo.query.QueryParserException;
 
 /**
  * create a job for each request of State or new job
- * variable attribute, Object RRjob without jobContent/result by requesting status
+ * variable attribute, Object RRjob without script/result by requesting status
  * @author T.Shan
  *
  */
@@ -19,35 +22,39 @@ import eu.stratosphere.sopremo.query.QueryParserException;
 //TODO maybe the execute should be called in this class instead of in JobExcecutor
 public class RRjob{
 
-	 // a list of lists which include all the jobs from one client 
-	public String jType;  
+	 // a list of lists which include all the jobs from one client
 	public String clientID;	   
 	String jobID;	   
-	public String status;
+	private JobState status;
 	
-	String jobContent;
+	private ClientFrontend frontend;
+	
+	String script;
+	
 	List<String> result;
 	
-	   
-	public RRjob(String jobType, String cid, String jid) {
-	      this.jType=jobType;
-	      this.clientID=cid;
-	      this.jobID=jid;	    
-	      this.status="open";
+	private final Date submitTime;
+	
+	public RRjob(String clientID, String jobID, String meteorScript, Date submitTime) {
+	      this.clientID = clientID;
+	      this.jobID = jobID;
+	      this.status= JobState.WAITING;
+	      this.script = meteorScript;
+	      this.frontend = new ClientFrontend(null);
+	      this.submitTime = submitTime;
+	      this.result = new ArrayList<String>();
+	      
+	      result.add("Wie geil is das denn");
 	}
 	
-	public String getStatus(){
+	public JobState getStatus(){
 		return this.status;
 	}
 	
-	public void resetStatus(){
-		this.status="finished";
+	public void resetStatus( JobState status ){
+		this.status = status;
 	}
 	
-	public String getjType() {
-		return jType;
-	}
-
 	public String getClientID() {
 		return clientID;
 	}
@@ -55,21 +62,10 @@ public class RRjob{
 	public String getJobID() {
 		return jobID;
 	}
-
-	
-	public void setContent(String jid, String meteorScript){
-		if (this.jobID.equals(jid)){
-			this.jobContent=meteorScript;
-		}
-	}
 		
-	public String getResult(){
-		String answer=null;
-		
-		if (this.isDone()){
-			answer=result.toString();
-		}
-		return answer;		
+	public String getResult( int index ){
+		if ( index < 0 || index >= this.result.size() ) return null;
+		return this.result.get(index);
 	}
 	  
     public boolean isDone( ){
@@ -82,14 +78,10 @@ public class RRjob{
 
 	public void execute() {
 		
-		//execute the metoer-script		
-		ClientFrontend frontEnd =new ClientFrontend (null);
-		
 		try {
-			frontEnd.execute(this.jobContent);
-			this.result=frontEnd.getOutputPaths();
-			this.resetStatus();
-			
+			this.frontend.execute(this.script);
+			this.result = frontend.getOutputPaths();
+			this.resetStatus( JobState.FINISHED );
 		} catch (QueryParserException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -103,7 +95,7 @@ public class RRjob{
 	public String toString(){
 		String output=new String();
 		
-		output=jType+"."+clientID+"."+jobID;		
+		output=clientID+"."+jobID;		
 		return output;
 		
 	}
