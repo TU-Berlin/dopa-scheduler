@@ -245,7 +245,7 @@ public class ServerConnectionFactory {
 	 * @throws IllegalArgumentException if any parameter doesn't set correct
 	 * @throws IOException cannot send the reply
 	 */
-	protected void replyRequest( BasicProperties requestProperties, JSONObject answer ) 
+	public void replyRequest( BasicProperties requestProperties, JSONObject answer ) 
 			throws IllegalArgumentException, IOException {
 		if ( answer == null ) answer = new JSONObject();
 		
@@ -262,13 +262,17 @@ public class ServerConnectionFactory {
 		// build reply properties
 		BasicProperties replyProps = new BasicProperties
 				.Builder()
-				.contentEncoding( charset.name() )
+				.contentEncoding( requestProperties.getContentEncoding() )
 				.contentType( SchedulerConfigConstants.JSON )
 				.correlationId( corrID )
 				.build();
 		
 		// else try to reply
-		this.requestChannel.basicPublish( "", reply_To, replyProps, answer.toString().getBytes( charset.name() ) );
+		this.requestChannel.basicPublish( 
+				"", // no routing key
+				reply_To, // reply queue
+				replyProps, // own properties
+				answer.toString().getBytes( requestProperties.getContentEncoding() ) ); // message
 	}
 	
 	/**
@@ -282,7 +286,7 @@ public class ServerConnectionFactory {
 	 * @throws IllegalArgumentException if there are no informations about an reply queue
 	 * @throws IOException cannot sends the request
 	 */
-	protected void sendBlock( BasicProperties requestProperties, byte[] block )
+	public void sendBlock( BasicProperties requestProperties, byte[] block )
 			throws IllegalArgumentException, IOException {
 		// get reply informations
 		String reply_To = requestProperties.getReplyTo();
@@ -298,6 +302,7 @@ public class ServerConnectionFactory {
 				.Builder()
 				.contentEncoding( requestProperties.getContentEncoding() )
 				.correlationId( requestProperties.getCorrelationId() )
+				.contentType( "text/plain" )
 				.build();
 		
 		// send block

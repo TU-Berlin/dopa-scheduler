@@ -12,7 +12,7 @@ import org.json.JSONObject;
 import com.rabbitmq.client.ConsumerCancelledException;
 import com.rabbitmq.client.ShutdownSignalException;
 
-import eu.stratosphere.meteor.client.job.JobStateListener;
+import eu.stratosphere.meteor.common.JobStateListener;
 import eu.stratosphere.meteor.common.MessageBuilder;
 import eu.stratosphere.meteor.common.JobState;
 
@@ -131,7 +131,7 @@ public class DOPAClient {
 	 * 
 	 * @return unmodifiable map of current job objects
 	 */
-	public Map<String, DSCLJob> getJobList(){
+	public Map<String, DSCLJob> getJobList() {
 		return Collections.unmodifiableMap( this.jobs );
 	}
 	
@@ -230,28 +230,19 @@ public class DOPAClient {
 	/** TODO - only test area follow - TODO 
 	 * @throws InterruptedException **/
 	public static void main( String[] args ) throws InterruptedException{
-		DOPAClient client = createNewClient( "TanteEmma" );
-		
-		//System.out.println( "client erstellt" );
+		DOPAClient client = createNewClient( "Max Mustermann" );
 		
 		client.connect();
 		
-		//System.out.println( "connection erstellt." );
-		//*/
-		
-		DSCLJob job = client.createNewJob("huhu");
-		
-		System.out.println( job.getStatus() );
-		
-		Thread.sleep(2000);
-		
-		System.out.println( job.getStatus() );
-		//*/
-		/*System.out.println(job.getResultLink(0));
-		job.getLink(0);
-		
-		Thread.sleep(2000);
-		System.out.println( job.getResultLink(0) );
-		//*/
+//		DSCLJob job = client.createNewJob("huhu");
+//		
+//		Thread.sleep(2000);
+//		
+//		System.out.println( job.getResultLink(0) );
+//		job.getLink(0);
+//		Thread.sleep(2000);
+//		System.out.println( job.getResultLink(0) );
+//		
+//		job.abortJob();
 	}
 }

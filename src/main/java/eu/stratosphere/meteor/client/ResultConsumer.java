@@ -1,4 +1,4 @@
-package eu.stratosphere.meteor.client.connection;
+package eu.stratosphere.meteor.client;
 
 import java.io.IOException;
 
@@ -10,12 +10,10 @@ import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Envelope;
 import com.rabbitmq.client.QueueingConsumer;
 
-import eu.stratosphere.meteor.client.DOPAClient;
-import eu.stratosphere.meteor.client.DSCLJob;
-import eu.stratosphere.meteor.client.job.ResultFileBlock;
-import eu.stratosphere.meteor.client.job.ResultFileHandler;
 import eu.stratosphere.meteor.common.MessageBuilder;
 import eu.stratosphere.meteor.common.RequestConsumable;
+import eu.stratosphere.meteor.common.ResultFileBlock;
+import eu.stratosphere.meteor.common.ResultFileHandler;
 
 /**
  * Handle incoming file blocks asynchronously. Its an request consumable class so it's
@@ -43,6 +41,7 @@ public class ResultConsumer extends QueueingConsumer implements RequestConsumabl
 	 */
 	private int fileIndex = 0;
 	private int blockIdx = 0;
+	private int blockSize = 0;
 	private long maxBlockNumbers = 0;
 	private String jobID = null;
 	
@@ -51,9 +50,8 @@ public class ResultConsumer extends QueueingConsumer implements RequestConsumabl
 	 * @param client DOPAClient
 	 * @param ch channel
 	 * @param correlationID of incoming message
-	 * TODO security?
 	 */
-	public ResultConsumer( DOPAClient client, Channel ch, String correlationID ) {
+	protected ResultConsumer( DOPAClient client, Channel ch, String correlationID ) {
 		super(ch);
 		this.client = client;
 		this.corrID = correlationID;
@@ -84,8 +82,11 @@ public class ResultConsumer extends QueueingConsumer implements RequestConsumabl
 				// fill following informations
 				JSONObject obj = new JSONObject( jsonString );
 				maxBlockNumbers = MessageBuilder.getMaxNumOfBlocks( obj );
+				blockSize = MessageBuilder.getDesiredBlockSize( obj );
 				jobID = MessageBuilder.getJobID( obj );
 				fileIndex = MessageBuilder.getFileIndex( obj );
+				
+				System.out.println( obj );
 			} catch (JSONException e) {}
 			
 			// acknowledge rabbitMQ
@@ -96,14 +97,14 @@ public class ResultConsumer extends QueueingConsumer implements RequestConsumabl
 		// else incoming delivery is a file block.
 		try{
 			// create block from incoming message
-			ResultFileBlock block = new ResultFileBlock( body, properties.getContentEncoding(), blockIdx++, maxBlockNumbers );
+			ResultFileBlock block = new ResultFileBlock( body, properties.getContentEncoding(), blockIdx++, blockSize, maxBlockNumbers );
 			
 			// get file handler
 			DSCLJob job = client.getJobList().get( jobID );
 			ResultFileHandler handler = job.getResultHandler().get( fileIndex );
 			
 			// inform file handler
-			handler.handleFileBlock( job, block );
+			if ( handler != null ) handler.handleFileBlock( job, block );
 		} catch ( NullPointerException npe ){
 			DOPAClient.LOG.error("Cannot receive file by missing meta informations.", npe);
 		}

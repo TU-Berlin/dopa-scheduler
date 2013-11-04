@@ -2,32 +2,24 @@ package eu.stratosphere.meteor.server;
 
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
-import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.LinkedList;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import com.rabbitmq.client.ConnectionFactory;
-import com.rabbitmq.client.Connection;
-import com.rabbitmq.client.Channel;
-import com.rabbitmq.client.ConsumerCancelledException;
-import com.rabbitmq.client.QueueingConsumer;
 import com.rabbitmq.client.AMQP.BasicProperties;
 import com.rabbitmq.client.QueueingConsumer.Delivery;
-import com.rabbitmq.client.ShutdownSignalException;
 
 import eu.stratosphere.meteor.SchedulerConfigConstants;
-import eu.stratosphere.meteor.client.DSCLJob;
 import eu.stratosphere.meteor.common.JobState;
 import eu.stratosphere.meteor.common.MessageBuilder;
 import eu.stratosphere.meteor.common.MessageBuilder.RequestType;
-import eu.stratosphere.meteor.server.executors.ClientObject;
-import eu.stratosphere.meteor.server.executors.RRjob;
+import eu.stratosphere.meteor.server.executor.FileSender;
+import eu.stratosphere.meteor.server.executor.RRJob;
+import eu.stratosphere.meteor.server.executor.RoundRobin;
 
 /**
  * The scheduler will started by Server.java. The scheduler connects to
@@ -52,20 +44,20 @@ public class DOPAScheduler {
 	
 	/**
 	 * Collection of all jobs to iterate through while working process.
-	 * Each element is just a reference to job object in jobCollection or in finishedJobsCollection.
+	 * Each element is just a reference to job object in workingJobsCollection or in finishedJobsCollection.
 	 */
-	private LinkedList<RRjob> jobList;
+	private RoundRobin<String, RRJob> roundRobinJobList;
 	
 	/**
 	 * Map about clients and their jobs. Identified by clientID and jobID.
 	 * <clientID, <jobID, JobObject>>
 	 */
-	private HashMap<String, HashMap<String, RRjob>> jobCollection;
+	private HashMap<String, HashMap<String, RRJob>> workingJobsCollection;
 	
 	/**
-	 * Same like jobCollection above. Filled with finished jobs.
+	 * Same like workingJobsCollection above. Filled with finished jobs.
 	 */
-	private HashMap<String, HashMap<String, RRjob>> finishedJobsCollection;
+	private HashMap<String, HashMap<String, RRJob>> finishedJobsCollection;
 	
 	/**
 	 * Paused main-loop flag
@@ -80,16 +72,16 @@ public class DOPAScheduler {
 	/**
 	 * A global constant about the working time for each cycle
 	 */
-	private final long WORKING_TIME = 1_000;
+	private final long WAITING_TIME = 100;
 	
 	/**
 	 * If you want to get a DOPAScheduler object please use the static method to create
 	 * once. Note that only one client per system is allowed.
 	 */
 	private DOPAScheduler() {
-		this.jobList = new LinkedList<RRjob>();
-		this.jobCollection = new HashMap<String, HashMap<String, RRjob>>();
-		this.finishedJobsCollection = new HashMap<String, HashMap<String, RRjob>>();
+		this.roundRobinJobList = new RoundRobin<String, RRJob>();
+		this.workingJobsCollection = new HashMap<String, HashMap<String, RRJob>>();
+		this.finishedJobsCollection = new HashMap<String, HashMap<String, RRJob>>();
 	}
 	
 	/**
@@ -107,11 +99,13 @@ public class DOPAScheduler {
 	 * @param script of this job
 	 */
 	private void handleIncomingJob( String clientID, String jobID, BasicProperties properties, byte[] script ){
+		DOPAScheduler.LOG.info("New job received. JobID: " + jobID );
+		
 		// is this job in working list yet
-		RRjob job = getWorkingJob( clientID, jobID );
+		RRJob job = getWorkingJob( clientID, jobID );
 		if ( job != null ) { // if yes delete it
-			job = jobCollection.get(clientID).remove(jobID);
-			jobList.remove( job );
+			job = workingJobsCollection.get( clientID ).remove(jobID);
+			roundRobinJobList.remove(clientID, job);
 		}
 		
 		// is this job still finished
@@ -125,15 +119,15 @@ public class DOPAScheduler {
 			String meteorScript = new String( script, encoding );
 			Date submitTime = properties.getTimestamp();
 			
-			job = new RRjob( clientID, jobID, meteorScript, submitTime );
+			job = new RRJob( clientID, jobID, meteorScript, submitTime );
 			
 			// put to existing list or create once
-			HashMap<String, RRjob> clients = jobCollection.get(clientID);
-			if ( clients == null ) clients = jobCollection.put(clientID, new HashMap<String, RRjob>());
+			HashMap<String, RRJob> clients = workingJobsCollection.get(clientID);
+			if ( clients == null ) clients = workingJobsCollection.put(clientID, new HashMap<String, RRJob>());
 			clients.put(jobID, job);
 			
 			// added to working list
-			jobList.add(job);
+			roundRobinJobList.add( clientID, job );
 			
 			// send new job status to client
 			statusUpdate( clientID, jobID );
@@ -152,8 +146,6 @@ public class DOPAScheduler {
 	 */
 	private void handleIncomingRequest( Delivery delivery ) 
 			throws UnsupportedEncodingException, JSONException {		
-		LOG.info("Incoming Request!");
-		
 		//checks if the incoming delivery contains a json string
 		if( !delivery.getProperties().getContentType().contains("json") ){
 			LOG.warn("Incoming message doesn't contains a json string.");
@@ -177,7 +169,8 @@ public class DOPAScheduler {
 			case GET_LINK:
 				replyLink( clientID, jobID, request, delivery.getProperties() ); 
 				break;
-			case REQUEST_RESULT: // TODO
+			case REQUEST_RESULT: 
+				sendResult( clientID, jobID, delivery );
 				break;
 			case JOB_ABORT: 
 				abortJob( clientID, jobID ); 
@@ -192,8 +185,8 @@ public class DOPAScheduler {
 	 * @param jobID specified job
 	 */
 	private void statusUpdate( String clientID, String jobID ){
-		//get the specified RRjob from the jobCollection by the ClientID and the JobID
-		RRjob job = getWorkingJob( clientID, jobID );
+		//get the specified RRjob from the workingJobsCollection by the ClientID and the JobID
+		RRJob job = getWorkingJob( clientID, jobID );
 		if ( job == null ) job = getFinishedJob( clientID, jobID );
 		
 		// build json object for reply
@@ -214,24 +207,18 @@ public class DOPAScheduler {
 	 * @param properties from request
 	 */
 	private void replyLink( String clientID, String jobID, JSONObject request, BasicProperties properties ){
-		//get the specified RRjob from the jobCollection by the ClientID and the JobID
-		RRjob job = getFinishedJob( clientID, jobID );
-		
-		// if not finished send empty message
-		if ( job == null ){
-			try { this.connectionFactory.replyRequest( properties, new JSONObject() ); }
-			catch ( IOException ioe ){ LOG.error("Cannot send empty link of not existing job.", ioe); }
-			return;
-		}
+		//get the specified RRjob from the workingJobsCollection by the ClientID and the JobID
+		RRJob job = getFinishedJob( clientID, jobID );
 		
 		// get index from request
 		int idx = MessageBuilder.getFileIndex( request );
 		
 		// build reply
 		JSONObject reply = MessageBuilder.buildGetLink(clientID, jobID, idx);
-		reply = MessageBuilder.addPath( reply,  job.getResult(idx) );
 		
-		System.out.println( reply );
+		if ( job != null ) reply = MessageBuilder.addPath( reply, job.getResult(idx) );
+		else reply = MessageBuilder.addPath( reply, "" );
+		// TODO have to send error message or something that can handled
 		
 		// send message
 		try { this.connectionFactory.replyRequest( properties, reply ); }
@@ -244,9 +231,9 @@ public class DOPAScheduler {
 	 * @param jobID specified job
 	 */
 	private void abortJob( String clientID, String jobID ){
-		//get the specified RRjob from the jobCollection by the ClientID and the JobID
-		HashMap<String, RRjob> clientMap = jobCollection.get(clientID);
-		HashMap<String, RRjob> finClientMap = jobCollection.get(clientMap);
+		//get the specified RRjob from the workingJobsCollection by the ClientID and the JobID
+		HashMap<String, RRJob> clientMap = workingJobsCollection.get(clientID);
+		HashMap<String, RRJob> finClientMap = workingJobsCollection.get(clientMap);
 		
 		// if exists, delete it
 		if ( clientMap != null ) clientMap.remove(jobID);
@@ -256,6 +243,23 @@ public class DOPAScheduler {
 		JSONObject reply = MessageBuilder.buildJobStatus( clientID, jobID, JobState.DELETED );
 		try { this.connectionFactory.sendJobStatus(clientID, reply); }
 		catch ( IOException ioe ) { LOG.error( "Cannot send deleted job status, after deleted job.", ioe ); }
+		
+		DOPAScheduler.LOG.info("Job aborted. JobID: " + jobID);
+	}
+	
+	/**
+	 * TODO
+	 * @param clientID
+	 * @param jobID
+	 * @param delivery
+	 */
+	private void sendResult( String clientID, String jobID, Delivery delivery ){
+		RRJob job = this.finishedJobsCollection.get(clientID).get(jobID);
+		if ( job == null ) return; // TODO any error message to resultConsumer
+		
+		// TODO multi-threading!
+		FileSender sender = new FileSender( this.connectionFactory, job, delivery );
+		sender.run();
 	}
 	
 	/**
@@ -265,9 +269,9 @@ public class DOPAScheduler {
 	 * @param jobID
 	 * @return RRjob if its exists, otherwise null
 	 */
-	private RRjob getWorkingJob( String clientID, String jobID ){
-		RRjob job = null;
-		HashMap<String, RRjob> clientMap = jobCollection.get(clientID);
+	private RRJob getWorkingJob( String clientID, String jobID ){
+		RRJob job = null;
+		HashMap<String, RRJob> clientMap = workingJobsCollection.get(clientID);
 		if ( clientMap != null ) job = clientMap.get(jobID);
 		return job;
 	}
@@ -279,51 +283,34 @@ public class DOPAScheduler {
 	 * @param jobID
 	 * @return RRjob if its exists, otherwise null
 	 */
-	private RRjob getFinishedJob( String clientID, String jobID ){
-		RRjob job = null;
-		HashMap<String, RRjob> clientMap = finishedJobsCollection.get(clientID);
+	private RRJob getFinishedJob( String clientID, String jobID ){
+		RRJob job = null;
+		HashMap<String, RRJob> clientMap = finishedJobsCollection.get(clientID);
 		if ( clientMap != null ) job = clientMap.get(jobID);
 		return job;
 	}
 	
 	/**
+	 * TODO
 	 * work on the jobList from job list in round robin for WORKING_TIME seconds
 	 */
-	private void workOnJobs( long threshold ){
-		// start time
-		long start = System.currentTimeMillis();
+	private void workOnJobs(){
+		//take first job from the job-list and its status
+		RRJob currentJob = roundRobinJobList.next();
 		
-		// work-loop
-	    while( System.currentTimeMillis() < start + threshold ){
-			//take first job from the job-list and its status
-			RRjob currentJob = jobList.pop();
-			JobState currentJobStatus = currentJob.getStatus();
-			
-			//execute the current job
-			currentJob.execute();
-			
-			//push the new status to the status-queue from the Client if the job status has changed
-			if(!currentJobStatus.equals(currentJob.getStatus())){
-			
-				JSONObject status = MessageBuilder.buildJobStatus(currentJob.getClientID(), currentJob.getClientID(), currentJob.getStatus());
+		if ( currentJob == null ){
+			// clean garbage
+			roundRobinJobList.hardReset();
+			return;
+		}
 		
-				try {
-					this.connectionFactory.sendJobStatus(currentJob.getClientID(), status);
-				}catch (IOException e) {
-					
-				}
-			}
-			
-			//place the current job at the end of the job-list if it isn't finished
-			if(currentJob.isDone()){
-				//finishedJobsList.add(currentJob);
-			}else{
-				jobList.addLast(currentJob);
-			}
-			
-			
-	    }
+		//execute the current job
+		//currentJob.execute();
 		
+		// TODO TEST
+		HashMap<String, RRJob> tmpMap = new HashMap<String, RRJob>();
+		tmpMap.put(currentJob.getJobID(), currentJob);
+		this.finishedJobsCollection.put(currentJob.getClientID(), tmpMap);
 	}
 	
 	/**
@@ -334,10 +321,11 @@ public class DOPAScheduler {
 	 * @return true if the client got the rights, false otherwise
 	 */
 	protected boolean addClient(String clientID) {
-		if ( jobCollection.containsKey(clientID) ) return false;
+		if ( workingJobsCollection.containsKey(clientID) ) return false;
 		else {
-			jobCollection.put(clientID, new HashMap<String, RRjob>());
-			finishedJobsCollection.put( clientID, new HashMap<String, RRjob>());
+			workingJobsCollection.put(clientID, new HashMap<String, RRJob>());
+			finishedJobsCollection.put( clientID, new HashMap<String, RRJob>());
+			DOPAScheduler.LOG.info("Client '" + clientID + "' registered.");
 		}
 		return true;
 	}
@@ -351,13 +339,15 @@ public class DOPAScheduler {
 		// TODO allowed? if not return false
 		
 		// remove client and all jobs from this client from working list
-		HashMap<String, RRjob> map = jobCollection.remove(clientID);
-		for ( String key : map.keySet() ) jobList.remove( map.get(key) );
+		roundRobinJobList.remove(clientID);
+		
+		//HashMap<String, RRJob> map = workingJobsCollection.remove(clientID);
+		//for ( String key : map.keySet() ) jobList.remove( map.get(key) );
 		
 		// remove finished jobs as well
 		finishedJobsCollection.remove(clientID);
 		
-		// fiinished
+		// finished
 		return true;
 	}
 	
@@ -374,11 +364,11 @@ public class DOPAScheduler {
 		while( !paused ){
 			
 			// get delivery
-			Delivery delivery = connectionFactory.getRequest(100);
+			Delivery delivery = connectionFactory.getRequest( WAITING_TIME );
 			
 			// if nothing todo at all, sleep a bit and continue after wake up
-			if ( delivery == null && jobList.isEmpty() ){
-				try { Thread.sleep(WORKING_TIME); } 
+			if ( delivery == null && !roundRobinJobList.hasNext() ){
+				try { Thread.sleep( WAITING_TIME ); } 
 				catch (InterruptedException e) { Thread.interrupted(); }
 				continue;
 			}
@@ -386,8 +376,6 @@ public class DOPAScheduler {
 			if ( delivery != null ){
 				//get the rountingKey from the delivery
 				String routingKey = delivery.getEnvelope().getRoutingKey();
-				
-				System.out.println( "Incoming delivery: " + routingKey );
 				
 				// if incoming message is a request
 				if ( routingKey.matches( SchedulerConfigConstants.REQUEST_KEY_MASK ) ){
@@ -401,12 +389,10 @@ public class DOPAScheduler {
 				}
 			} // end if delivery != null
 			
-			
-			
 			/**
 			 * execute jobList via round robin algorithm here
 			 */
-			//workOnJobs( WORKING_TIME );
+			workOnJobs();
 			
 			/**
 			 * TODO

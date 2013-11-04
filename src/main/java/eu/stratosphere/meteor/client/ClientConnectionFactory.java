@@ -16,9 +16,6 @@ import com.rabbitmq.client.QueueingConsumer;
 import com.rabbitmq.client.ShutdownSignalException;
 
 import eu.stratosphere.meteor.SchedulerConfigConstants;
-import eu.stratosphere.meteor.client.connection.LinkConsumer;
-import eu.stratosphere.meteor.client.connection.ResultConsumer;
-import eu.stratosphere.meteor.client.connection.StatusConsumer;
 import eu.stratosphere.meteor.common.RequestConsumable;
 
 /**
@@ -168,7 +165,7 @@ public class ClientConnectionFactory {
 	 * @param corrID correlation ID of the request
 	 * @return result consumer
 	 */
-	public ResultConsumer getResultConsumer( String corrID ){
+	protected ResultConsumer getResultConsumer( String corrID ){
 		return new ResultConsumer( this.client, this.requestChannel, corrID );
 	}
 	
@@ -177,7 +174,7 @@ public class ClientConnectionFactory {
 	 * @param corrID correlation ID of the request
 	 * @return link consumer
 	 */
-	public LinkConsumer getLinkConsumer( String corrID ){
+	protected LinkConsumer getLinkConsumer( String corrID ){
 		return new LinkConsumer( this.client, this.requestChannel, corrID );
 	}
 	
@@ -199,7 +196,7 @@ public class ClientConnectionFactory {
 	 * @throws JSONException if we cannot rebuild a json object from message
 	 * @throws IOException if we cannot send the request
 	 */
-	public JSONObject getStatus( long timeOut ) 
+	protected JSONObject getStatus( long timeOut ) 
 			throws ShutdownSignalException, ConsumerCancelledException, InterruptedException, 
 			UnsupportedEncodingException, JSONException, IOException 
 			{
@@ -232,7 +229,7 @@ public class ClientConnectionFactory {
 	 * @param jobID to specify this job
 	 * @throws IOException
 	 */
-	public void submitJob( String meteorScript, String clientID, String jobID ) throws IOException {
+	protected void submitJob( String meteorScript, String clientID, String jobID ) throws IOException {
 		BasicProperties jobProps = new BasicProperties
 				.Builder()
 				.contentEncoding(charset)
@@ -247,7 +244,7 @@ public class ClientConnectionFactory {
 	    		meteorScript.getBytes( charset )
 	    		);
 		
-		DOPAClient.LOG.info("Job submitted!");
+		DOPAClient.LOG.info("Job submitted! JobID: " + jobID);
 	}
 	
 	/**
@@ -259,7 +256,7 @@ public class ClientConnectionFactory {
 	 * @throws ConsumerCancelledException 
 	 * @throws ShutdownSignalException 
 	 */
-	public void sendRequest( QueueingConsumer consumer, JSONObject request, String correlationID ) throws IOException, 
+	protected void sendRequest( QueueingConsumer consumer, JSONObject request, String correlationID ) throws IOException, 
 			ShutdownSignalException, ConsumerCancelledException, InterruptedException
 			{
 		// if there is an old staticStatusConsumer waiting for replies
@@ -310,7 +307,7 @@ public class ClientConnectionFactory {
 	 * @throws ConsumerCancelledException if this staticStatusConsumer doesn't exist anymore
 	 * @throws IOException if cannot cancel the tmpRequestConsumer
 	 */
-	public String getReply( String correlationID, long timeOut ) throws ConsumerCancelledException, IOException{
+	protected String getReply( String correlationID, long timeOut ) throws ConsumerCancelledException, IOException{
 		try {
 			// get reply from reply queue
 			QueueingConsumer.Delivery reply = tmpRequestConsumer.nextDelivery( timeOut );

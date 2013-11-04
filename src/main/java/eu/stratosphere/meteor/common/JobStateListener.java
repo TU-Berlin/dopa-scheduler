@@ -1,7 +1,6 @@
-package eu.stratosphere.meteor.client.job;
+package eu.stratosphere.meteor.common;
 
 import eu.stratosphere.meteor.client.DSCLJob;
-import eu.stratosphere.meteor.common.JobState;
 
 /**
  * This interface represents a listener for status changes of DSCLJobs. If you

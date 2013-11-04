@@ -1,4 +1,4 @@
-package eu.stratosphere.meteor.client.job;
+package eu.stratosphere.meteor.common;
 
 import java.nio.charset.Charset;
 
@@ -15,10 +15,10 @@ public class ResultFileBlock {
 	private final byte[] block;
 	private final Charset encoding;
 	private final int blockIdx;
+	private final int blockSize;
 	private final long numOfAllBlocks;
 	
 	/** calculated informations **/
-	private int blockSize;
 	private String stringRepresentation;
 	
 	/**
@@ -27,13 +27,15 @@ public class ResultFileBlock {
 	 * @param encoding the encoding type for this object
 	 * @param blockIdx the index of this block
 	 */
-	public ResultFileBlock( byte[] block, String encoding, int blockIdx, long numOfAllBlocks ){
+	public ResultFileBlock( byte[] block, String encoding, int blockIdx, int blockSize, long numOfAllBlocks ){
 		this.block = block;
 		this.encoding = Charset.forName(encoding);
 		this.blockIdx = blockIdx;
+		this.blockSize = blockSize;
 		this.numOfAllBlocks = numOfAllBlocks;
-		this.blockSize = block.length;
 		this.stringRepresentation = new String( block, this.encoding );
+		
+		System.out.println( "New Block: " + stringRepresentation );
 	}
 
 	/**

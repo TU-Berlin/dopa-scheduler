@@ -1,4 +1,4 @@
-package eu.stratosphere.meteor.client.connection;
+package eu.stratosphere.meteor.client;
 
 import java.io.IOException;
 
@@ -12,11 +12,8 @@ import com.rabbitmq.client.Envelope;
 import com.rabbitmq.client.QueueingConsumer;
 import com.rabbitmq.client.ShutdownSignalException;
 
-import eu.stratosphere.meteor.client.ClientConnectionFactory;
-import eu.stratosphere.meteor.client.DOPAClient;
-import eu.stratosphere.meteor.client.DSCLJob;
-import eu.stratosphere.meteor.client.job.JobStateListener;
 import eu.stratosphere.meteor.common.JobState;
+import eu.stratosphere.meteor.common.JobStateListener;
 import eu.stratosphere.meteor.common.MessageBuilder;
 
 /**
@@ -27,14 +24,14 @@ import eu.stratosphere.meteor.common.MessageBuilder;
  */
 public class StatusConsumer extends QueueingConsumer {
 	
-	ClientConnectionFactory connFac;
-	DOPAClient client;
+	private final ClientConnectionFactory connFac;
+	private final DOPAClient client;
 	
 	/**
 	 * Super constructor
 	 * @param ch
 	 */
-	public StatusConsumer( ClientConnectionFactory connFac, DOPAClient client, Channel ch ) {
+	protected StatusConsumer( ClientConnectionFactory connFac, DOPAClient client, Channel ch ) {
 		super(ch);
 		this.connFac = connFac;
 		this.client = client;
@@ -48,8 +45,6 @@ public class StatusConsumer extends QueueingConsumer {
 	@Override
 	public void handleDelivery( String consumerTag, Envelope envelope, AMQP.BasicProperties properties, byte[] body )
 			throws IOException {
-		DOPAClient.LOG.info("Incoming delivery!");
-		
 		// forward delivery
 		super.handleDelivery(consumerTag, envelope, properties, body);
 		
@@ -62,6 +57,8 @@ public class StatusConsumer extends QueueingConsumer {
 			String jobID = status.getString("JobID");
 			DSCLJob job = client.getJobList().get( jobID );
 			JobState newStatus = MessageBuilder.getJobStatus(status);
+			
+			DOPAClient.LOG.info( "Status update! JobID: " + jobID + ", New job status: " + newStatus );
 			
 			// update status
 			job.setStatus( newStatus );

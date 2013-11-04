@@ -2,7 +2,6 @@ package eu.stratosphere.meteor.client;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -14,12 +13,12 @@ import org.json.JSONObject;
 import com.rabbitmq.client.ConsumerCancelledException;
 import com.rabbitmq.client.ShutdownSignalException;
 
-import eu.stratosphere.meteor.client.connection.LinkConsumer;
-import eu.stratosphere.meteor.client.connection.ResultConsumer;
-import eu.stratosphere.meteor.client.job.JobStateListener;
-import eu.stratosphere.meteor.client.job.ResultFileHandler;
+import eu.stratosphere.meteor.client.ClientConnectionFactory;
+import eu.stratosphere.meteor.client.DOPAClient;
 import eu.stratosphere.meteor.common.JobState;
+import eu.stratosphere.meteor.common.JobStateListener;
 import eu.stratosphere.meteor.common.MessageBuilder;
+import eu.stratosphere.meteor.common.ResultFileHandler;
 
 /**
  * Implements the comparable interface to define the differences between jobs.
@@ -28,7 +27,7 @@ import eu.stratosphere.meteor.common.MessageBuilder;
  * @author André Greiner-Petter
  * 
  */
-public class DSCLJob{
+public class DSCLJob {
 	
 	/**
 	 * Unique job ID to identify this job
@@ -88,7 +87,11 @@ public class DSCLJob{
 		this.CLIENT_ID = clientID;
 		this.JOB_ID = jobID;
 		this.meteorScript = meteorScript;
+		
+		// initialize job status
 		this.currState = JobState.INITIALIZE;
+		
+		// declare collections
 		this.listeners = new LinkedList<JobStateListener>();
 		this.linksOfResults = new HashMap<Integer, String>();
 		this.resultHandler = new HashMap<Integer, ResultFileHandler>();
@@ -101,8 +104,7 @@ public class DSCLJob{
 	 * 
 	 * @param newState one of the enum JobState
 	 */
-	public void setStatus( JobState newState ){
-		// TODO security?
+	protected void setStatus( JobState newState ){
 		this.currState = newState;
 	}
 	
@@ -110,8 +112,7 @@ public class DSCLJob{
 	 * Sets meteor script (not visible for normal users)
 	 * @param meteorScript
 	 */
-	public void setMeteorScript( String meteorScript ){
-		// TODO security?
+	protected void setMeteorScript( String meteorScript ){
 		this.meteorScript = meteorScript;
 	}
 	
@@ -119,8 +120,7 @@ public class DSCLJob{
 	 * Deletes the handler for result file.
 	 * @param fileIdx specify result
 	 */
-	public void deleteStatusHandler( int fileIdx ){
-		// TODO security?
+	protected void deleteStatusHandler( int fileIdx ){
 		this.resultHandler.remove( fileIdx );
 	}
 	
@@ -129,7 +129,7 @@ public class DSCLJob{
 	 * @param index of result link in job
 	 * @param path itself
 	 */
-	public void setResultLink( int index, String path ){
+	protected void setResultLink( int index, String path ){
 		this.linksOfResults.put( index, path );
 	}
 	
@@ -138,7 +138,7 @@ public class DSCLJob{
 	 * @param fileIdx of result
 	 * @param file result
 	 */
-	public void setResultFile( int fileIdx, File file ){
+	protected void setResultFile( int fileIdx, File file ){
 		this.results.put( fileIdx, file );
 	}
 	
@@ -151,7 +151,7 @@ public class DSCLJob{
 	}
 	
 	/**
-	 * Returns the current status of this job
+	 * Returns the current status of this job.
 	 * @return current job status
 	 */
 	public JobState getStatus(){
@@ -159,7 +159,7 @@ public class DSCLJob{
 	}
 	
 	/**
-	 * Returns the ID.
+	 * Returns the ID of this object.
 	 * @return ID
 	 */
 	public String getID(){
@@ -199,7 +199,7 @@ public class DSCLJob{
 	
 	/**
 	 * Adds a new listener.
-	 * @param listener 
+	 * @param listener
 	 * @return true if the collection changed
 	 */
 	public boolean addJobStateListener( JobStateListener listener ){
@@ -243,9 +243,9 @@ public class DSCLJob{
 	}
 	
 	/**
-	 * Get hdfs path of output file for use in follow-up jobs.
-	 * @param fileID
-	 * @return
+	 * Get HDFS path of output file for use in follow-up jobs. You specified the link by a given
+	 * index. The connection factory add the link automatically after received.
+	 * @param fileIndex specified index
 	 */
 	public void getLink( int fileIndex ){
 		try { // build request object and send message
@@ -256,13 +256,13 @@ public class DSCLJob{
 			this.connectionFac.sendRequest(consumer, request, corrID );
 		} catch (ShutdownSignalException | ConsumerCancelledException
 				| IOException | InterruptedException e) {
-			DOPAClient.LOG.error( "Cannot send request to abort a job.", e ); 
+			DOPAClient.LOG.error( "Cannot send request to get output path.", e ); 
 		}
 	}
 	
 	/**
-	 * Its abort this specified job on the scheduler site. This job is deleted when the current status
-	 * is {@code JobState.DELETED}.
+	 * Its abort this specified job on the scheduler site. This job is deleted on scheduler site when the current 
+	 * status changed to {@code JobState.DELETED}.
 	 */
 	public void abortJob(){
 		try { // build request object and send message
