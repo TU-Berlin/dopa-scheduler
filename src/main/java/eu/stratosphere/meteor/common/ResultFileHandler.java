@@ -1,4 +1,4 @@
-package eu.stratosphere.meteor.client.job;
+package eu.stratosphere.meteor.common;
 
 import eu.stratosphere.meteor.client.DSCLJob;
 

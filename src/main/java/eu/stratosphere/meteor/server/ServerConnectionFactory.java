@@ -1,6 +1,7 @@
 package eu.stratosphere.meteor.server;
 
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.util.Date;
 
 import org.json.JSONObject;
@@ -62,7 +63,7 @@ public class ServerConnectionFactory {
 	/**
 	 * Standard charset for the scheduler.
 	 */
-	private final String charset = "UTF-8";
+	private final Charset charset = Charset.defaultCharset();
 	
 	/**
 	 * The scheduler which uses this connection factory.
@@ -84,7 +85,7 @@ public class ServerConnectionFactory {
 	protected ServerConnectionFactory( final DOPAScheduler scheduler ){
 		this.scheduler = scheduler;
 		
-		System.out.print( "[X Scheduler] Initialize connections to RabbitMQ" );
+		DOPAScheduler.LOG.info("Initialize connections to RabbitMQ.");
 		
 		// create connection connectionFactory
 		this.connectionFactory = new ConnectionFactory();
@@ -93,24 +94,16 @@ public class ServerConnectionFactory {
 		this.connectionFactory.setHost( "localhost" );
 		
 		try {
-			System.out.print( "." );
-			
 			// creates a requestChannel to a connection
 			this.connection = connectionFactory.newConnection();
 			this.requestChannel = connection.createChannel();
 			this.responseChannel = connection.createChannel();
 			
-			System.out.print( "." );
-			
 			// connect the exchange and the queue
 			this.declareRequestExchange();
 			
-			System.out.print( "." );
-			
 			// connect the exchange and the queue
 			this.declareResponseExchange();
-			
-			System.out.print( "." );
 			
 			// creates a consumer to receive messages asynchronously
 			this.consumer = new QueueingConsumer( requestChannel );
@@ -120,14 +113,10 @@ public class ServerConnectionFactory {
 					consumer 
 					);
 			
-			System.out.println( "." );
-		} catch (IOException e) {
-			System.err.println("[X Scheduler] Cannot connect to RabbitMQ... Scheduler stoped.");
-			e.printStackTrace();
-			return;
+			DOPAScheduler.LOG.info("Succeed! Your scheduler is now connected with RabbitMQ.");
+		} catch ( IOException e ) {
+			DOPAScheduler.LOG.error("Cannot initialize connections to RabbitMQ.", e);
 		}
-		
-		System.out.println( "[X Scheduler] Done. Scheduler is ready to use." );
 	}
 	
 	/**
@@ -194,7 +183,7 @@ public class ServerConnectionFactory {
 	 * 
 	 * @param handShakeType can be 'login' or 'logoff'
 	 */
-	private void subscribe( QueueingConsumer.Delivery delivery ) throws IOException {		
+	private void subscribe( QueueingConsumer.Delivery delivery ) throws IOException {				
 		String replyQueue = delivery.getProperties().getReplyTo();
 		String encoding = delivery.getProperties().getContentEncoding();
 		
@@ -214,7 +203,7 @@ public class ServerConnectionFactory {
 					"", 
 					replyQueue, 
 					delivery.getProperties(), 
-					"sorry".getBytes( encoding ) // TODO JSONObject?
+					"sorry".getBytes( encoding )
 					);
 		}
 	}
@@ -231,8 +220,8 @@ public class ServerConnectionFactory {
 		// build properties for contentType and time stamp
 		BasicProperties props = new BasicProperties
 				.Builder()
-				.contentType("application/json")
-				.contentEncoding( charset )
+				.contentType( SchedulerConfigConstants.JSON )
+				.contentEncoding( charset.name() )
 				.timestamp( new Date() ) // default constructor represents 'NOW'
 				.build();
 		
@@ -243,8 +232,6 @@ public class ServerConnectionFactory {
 	    		props,
 	    		status.toString().getBytes( charset )
 	    		);
-		
-		System.err.println( "Send status with routingKey: " + SchedulerConfigConstants.getRoutingKey(clientName) );
 	}
 	
 	/**
@@ -254,19 +241,20 @@ public class ServerConnectionFactory {
 	 * If no content type is set its use text/plain by default.
 	 * 
 	 * @param requestProperties original properties from the request
-	 * @param encoding of reply
 	 * @param answer the reply itself
 	 * @throws IllegalArgumentException if any parameter doesn't set correct
 	 * @throws IOException cannot send the reply
 	 */
-	protected void replyRequest( BasicProperties requestProperties, String encoding, String answer ) 
+	public void replyRequest( BasicProperties requestProperties, JSONObject answer ) 
 			throws IllegalArgumentException, IOException {
+		if ( answer == null ) answer = new JSONObject();
+		
 		// get reply_to queue name and correlationID for this request
 		String reply_To = requestProperties.getReplyTo();
 		String corrID = requestProperties.getCorrelationId();
 		
 		// if there is no informations about the queue throw an exception
-		if ( reply_To == null || encoding == null ) 
+		if ( reply_To == null ) 
 			throw new IllegalArgumentException(
 					"One of the parameters aren't correct. Be sure you use the original properties from the request."
 					);
@@ -274,12 +262,51 @@ public class ServerConnectionFactory {
 		// build reply properties
 		BasicProperties replyProps = new BasicProperties
 				.Builder()
-				.contentEncoding( encoding )
+				.contentEncoding( requestProperties.getContentEncoding() )
+				.contentType( SchedulerConfigConstants.JSON )
 				.correlationId( corrID )
 				.build();
 		
 		// else try to reply
-		this.requestChannel.basicPublish( "", reply_To, replyProps, answer.getBytes( encoding ) );
+		this.requestChannel.basicPublish( 
+				"", // no routing key
+				reply_To, // reply queue
+				replyProps, // own properties
+				answer.toString().getBytes( requestProperties.getContentEncoding() ) ); // message
+	}
+	
+	/**
+	 * Sends a specified block of data represents of a byte array. The given properties have to be come
+	 * from the original request. If there are wrong arguments included in this properties maybe you didn't
+	 * use the correct properties. It throws an IllegalArgumentException if the name for the reply queue
+	 * is lost. However, it can throws an IOException if sending the block failed.
+	 * 
+	 * @param requestProperties original from the request
+	 * @param block you want to send, raw format data block
+	 * @throws IllegalArgumentException if there are no informations about an reply queue
+	 * @throws IOException cannot sends the request
+	 */
+	public void sendBlock( BasicProperties requestProperties, byte[] block )
+			throws IllegalArgumentException, IOException {
+		// get reply informations
+		String reply_To = requestProperties.getReplyTo();
+		
+		// handle unexpected input
+		if ( reply_To == null )
+			throw new IllegalArgumentException(
+					"One of the parameters aren't correct. Be sure you use the original properties from the request."
+					);
+		
+		// build new properties
+		BasicProperties blockProps = new BasicProperties
+				.Builder()
+				.contentEncoding( requestProperties.getContentEncoding() )
+				.correlationId( requestProperties.getCorrelationId() )
+				.contentType( "text/plain" )
+				.build();
+		
+		// send block
+		this.requestChannel.basicPublish("", reply_To, blockProps, block);
 	}
 	
 	/**
@@ -304,16 +331,16 @@ public class ServerConnectionFactory {
 			if ( routingKey[0].matches("register") && routingKey[1].matches("login") ) 
 				this.subscribe( delivery );
 			
-			// TODO unsubscribe
+			// log off
 			if ( routingKey[0].matches("register") && routingKey[1].matches("logoff") )
 				this.scheduler.removeClient( new String( delivery.getBody(), delivery.getProperties().getContentEncoding() ));
 			
-			return null;
+			// if login handled
+			return delivery;
 		} catch ( IOException | ShutdownSignalException | ConsumerCancelledException | InterruptedException exc ) {
 			// any error encountered while waiting
 			System.err.println("An error encountered while waiting for new deliveries!");
 			exc.printStackTrace();
-			// return null
 			return null;
 		}
 	}
