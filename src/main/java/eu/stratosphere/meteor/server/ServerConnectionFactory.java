@@ -203,7 +203,7 @@ public class ServerConnectionFactory {
 					"", 
 					replyQueue, 
 					delivery.getProperties(), 
-					"sorry".getBytes( encoding )
+					"Still registered!".getBytes( encoding )
 					);
 		}
 	}

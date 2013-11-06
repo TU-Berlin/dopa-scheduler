@@ -58,7 +58,11 @@ public class StatusConsumer extends QueueingConsumer {
 			DSCLJob job = client.getJobList().get( jobID );
 			JobState newStatus = MessageBuilder.getJobStatus(status);
 			
-			DOPAClient.LOG.info( "Status update! JobID: " + jobID + ", New job status: " + newStatus );
+			if ( newStatus.equals( JobState.ERROR ) ) {
+				String msg = "Server published an error message of specified Job: " + jobID + "; "
+						+ "With error message: " + MessageBuilder.getErrorMessage(status);
+				DOPAClient.LOG.warn( msg );
+			} else DOPAClient.LOG.info( "Status update! JobID: " + jobID + ", New job status: " + newStatus );
 			
 			// update status
 			job.setStatus( newStatus );

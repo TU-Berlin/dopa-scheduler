@@ -11,6 +11,7 @@ import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Envelope;
 import com.rabbitmq.client.QueueingConsumer;
 
+import eu.stratosphere.meteor.common.JobState;
 import eu.stratosphere.meteor.common.MessageBuilder;
 import eu.stratosphere.meteor.common.RequestConsumable;
 
@@ -69,10 +70,20 @@ public class LinkConsumer extends QueueingConsumer implements RequestConsumable 
 			Charset charset = Charset.forName( properties.getContentEncoding() );
 			JSONObject obj = new JSONObject( new String( body, charset ) );
 			
+			// if an error occurred kill this service
+			if ( MessageBuilder.getJobStatus( obj ).equals( JobState.ERROR ) ){
+				DOPAClient.LOG.error( "The scheduler sends an error message: " + MessageBuilder.getErrorMessage(obj) );
+				super.getChannel().basicAck(deliveryTag, false);
+				super.getChannel().basicCancel(consumerTag);
+				return;
+			}
+			
 			// get information
 			String jobID = MessageBuilder.getJobID( obj );
 			int index = MessageBuilder.getFileIndex( obj );
 			String path = MessageBuilder.getLink( obj );
+			
+			System.out.println( obj );
 			
 			// get job
 			DSCLJob job = client.getJobList().get(jobID);

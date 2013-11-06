@@ -10,6 +10,7 @@ import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Envelope;
 import com.rabbitmq.client.QueueingConsumer;
 
+import eu.stratosphere.meteor.common.JobState;
 import eu.stratosphere.meteor.common.MessageBuilder;
 import eu.stratosphere.meteor.common.RequestConsumable;
 import eu.stratosphere.meteor.common.ResultFileBlock;
@@ -18,12 +19,6 @@ import eu.stratosphere.meteor.common.ResultFileHandler;
 /**
  * Handle incoming file blocks asynchronously. Its an request consumable class so it's
  * implemented the marker interface to show it can handle replies from requests.
- *
- * TODO PROGRESS
- * 1) JSONObject with fileIdx, maxBlockNums
- * 2) byte[] of file (blocks)
- * 3) JSONObject with finished informations (time stamp for instance)
- * 		handle cancel options and delete handlers on job objects after finished reply session
  *
  * @author André Greiner-Petter
  *
@@ -81,12 +76,19 @@ public class ResultConsumer extends QueueingConsumer implements RequestConsumabl
 			try {
 				// fill following informations
 				JSONObject obj = new JSONObject( jsonString );
+				
+				// if an error message received cancel this consumer
+				if ( MessageBuilder.getJobStatus(obj).equals( JobState.ERROR ) ){
+					DOPAClient.LOG.warn("The scheduler send an error message: " + MessageBuilder.getErrorMessage(obj));
+					super.getChannel().basicAck(deliveryTag, false);
+					super.getChannel().basicCancel(consumerTag);
+					return;
+				}
+				
 				maxBlockNumbers = MessageBuilder.getMaxNumOfBlocks( obj );
 				blockSize = MessageBuilder.getDesiredBlockSize( obj );
 				jobID = MessageBuilder.getJobID( obj );
 				fileIndex = MessageBuilder.getFileIndex( obj );
-				
-				System.out.println( obj );
 			} catch (JSONException e) {}
 			
 			// acknowledge rabbitMQ
@@ -111,5 +113,9 @@ public class ResultConsumer extends QueueingConsumer implements RequestConsumabl
 		
 		// acknowledge rabbitMQ as well
 		super.getChannel().basicAck( deliveryTag, false );
+		
+		// finally cancel this consumer
+		if ( blockIdx == maxBlockNumbers )
+			super.getChannel().basicCancel(consumerTag);
 	}
 }

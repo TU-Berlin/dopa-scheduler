@@ -93,7 +93,7 @@ public class DOPAClient {
 	public void connect() {
 		// if the client is still connect
 		if ( this.connectionFac != null ) {
-			LOG.warn( "The client is still connected. If you want to reconnect the client disconnect it first." );
+			LOG.error( "The client is still connected. If you want to reconnect the client disconnect it first." );
 			return;
 		}
 		
@@ -111,7 +111,7 @@ public class DOPAClient {
 	public void disconnect() {
 		// is the client connected?
 		if ( this.connectionFac == null ){
-			LOG.warn("The client isn't connected. Please connect it first.");
+			LOG.error("The client isn't connected. Please connect it first.");
 			return;
 		}
 		
@@ -227,22 +227,13 @@ public class DOPAClient {
 		return new DOPAClient( ID );
 	}
 	
-	/** TODO - only test area follow - TODO 
-	 * @throws InterruptedException **/
-	public static void main( String[] args ) throws InterruptedException{
+	/**
+	 * TODO
+	 * This class is executable too but just to show how you create and connect a client object.
+	 * @param args
+	 */
+	public static void main( String[] args ) {
 		DOPAClient client = createNewClient( "Max Mustermann" );
-		
 		client.connect();
-		
-//		DSCLJob job = client.createNewJob("huhu");
-//		
-//		Thread.sleep(2000);
-//		
-//		System.out.println( job.getResultLink(0) );
-//		job.getLink(0);
-//		Thread.sleep(2000);
-//		System.out.println( job.getResultLink(0) );
-//		
-//		job.abortJob();
 	}
 }

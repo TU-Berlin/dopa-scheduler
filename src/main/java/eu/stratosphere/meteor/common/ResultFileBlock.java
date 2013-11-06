@@ -17,6 +17,7 @@ public class ResultFileBlock {
 	private final int blockIdx;
 	private final int blockSize;
 	private final long numOfAllBlocks;
+	private final int informationLength;
 	
 	/** calculated informations **/
 	private String stringRepresentation;
@@ -28,14 +29,18 @@ public class ResultFileBlock {
 	 * @param blockIdx the index of this block
 	 */
 	public ResultFileBlock( byte[] block, String encoding, int blockIdx, int blockSize, long numOfAllBlocks ){
-		this.block = block;
 		this.encoding = Charset.forName(encoding);
 		this.blockIdx = blockIdx;
 		this.blockSize = blockSize;
 		this.numOfAllBlocks = numOfAllBlocks;
 		this.stringRepresentation = new String( block, this.encoding );
+		this.informationLength = block.length;
 		
-		System.out.println( "New Block: " + stringRepresentation );
+		this.block = new byte[blockSize];
+		for ( int i = 0; i < block.length; i++ )
+			this.block[i] = block[i];
+		
+		System.out.println( stringRepresentation );
 	}
 
 	/**
@@ -43,6 +48,19 @@ public class ResultFileBlock {
 	 */
 	public byte[] getBlock() {
 		return block;
+	}
+	
+	/**
+	 * The block itself got a static size. First block got the same size as each other.
+	 * But the current informations are not reaches the end of the block for the whole time.
+	 * This informations returns the index where new informations end at the block.
+	 * 
+	 * So block[0] to block[informationLength()] contains the bytes of this block.
+	 * 
+	 * @return index where informations ends
+	 */
+	public int informationLength(){
+		return this.informationLength;
 	}
 
 	/**

@@ -1,13 +1,15 @@
 package eu.stratosphere.meteor.server.executor;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
+import org.json.JSONObject;
+
+import eu.stratosphere.meteor.SchedulerConfigConstants;
 import eu.stratosphere.meteor.client.ClientFrontend;
 import eu.stratosphere.meteor.common.JobState;
-import eu.stratosphere.sopremo.query.QueryParserException;
+import eu.stratosphere.meteor.common.MessageBuilder;
 
 /**
  * This class represents a job on the server site of the DOPAScheduler system.
@@ -22,13 +24,18 @@ public class RRJob {
 	 /**
 	  * Identification collection
 	  */
-	private String clientID;	   
+	private String clientID;
 	private String jobID;
 	
 	/**
 	 * Current job status. If this class instantiated the current status is {@code JobState.WAITING}
 	 */
 	private JobState status;
+	
+	/**
+	 * An error status as JSONObject
+	 */
+	private JSONObject errorJSON;
 	
 	/**
 	 * Comes from the MeteorWebfrontend
@@ -47,6 +54,11 @@ public class RRJob {
 	private final Date submitTime;
 	
 	/**
+	 * The executor is a thread to submit the job parallelized to the DOPAScheduler
+	 */
+	private final JobExecutor executor;
+	
+	/**
 	 * Creates an RoundRobinJob object
 	 * @param clientID from the client submitted this job
 	 * @param jobID of this job
@@ -54,16 +66,65 @@ public class RRJob {
 	 * @param submitTime from client site
 	 */
 	public RRJob(String clientID, String jobID, String meteorScript, Date submitTime) {
-	      this.clientID = clientID;
-	      this.jobID = jobID;
-	      this.status= JobState.WAITING;
-	      this.script = meteorScript;
-	      this.frontend = new ClientFrontend(null); // TODO arguments?
-	      this.submitTime = submitTime;
-	      this.result = new ArrayList<String>();
-	      
-	      // TODO dummy
-	      this.result.add("Im_a_test_path!");
+		this.clientID = clientID;
+		this.jobID = jobID;
+		this.status= JobState.WAITING;
+		this.script = meteorScript;
+		this.frontend = new ClientFrontend( SchedulerConfigConstants.EXECUTER_CONFIG );
+		this.submitTime = submitTime;
+		this.result = new ArrayList<String>();
+		this.errorJSON = new JSONObject();
+		this.executor = new JobExecutor( this );
+	}
+	
+	/**
+	 * Sets the output links.
+	 * @param outputs
+	 */
+	protected void setOutputStrings( List<String> outputs ){
+		this.result = outputs;
+	}
+	
+	/**
+	 * Creates an error object
+	 * @param error
+	 */
+	protected void setErrorMessage( String error ){
+		this.status = JobState.ERROR;
+		this.errorJSON = MessageBuilder.buildErrorMethod(clientID, error);
+	}
+	
+	/**
+	 * Sets the status of the job
+	 * @param status
+	 */
+	protected void setStatus( JobState status ){
+		this.status = status;
+	}
+	
+	/**
+	 * Returns the client frontend which executes the job
+	 * @return clientFrontend
+	 */
+	protected ClientFrontend getClientFrontend(){
+		return this.frontend;
+	}
+	
+	/**
+	 * Returns the meteor script
+	 * @return meteorScript
+	 */
+	protected String getMeteorScript(){
+		return this.script;
+	}
+	
+	/**
+	 * Returns a json object with error informations or null if no error occurred while executing this job.
+	 * @return JSONObject with error informations or null if no error occurred
+	 */
+	public JSONObject getErrorJSON(){
+		if ( !status.equals( JobState.ERROR ) ) return null;
+		else return this.errorJSON;
 	}
 	
 	/**
@@ -109,31 +170,18 @@ public class RRJob {
 	}
 	
 	/**
-	 * Returns true if this job finished
-	 * @return
+	 * Returns whether this job finished yet.
+	 * @return true if this job finished, otherwise false
 	 */
-    public boolean isDone( ){
-    	if (this.status.equals("finished")){
-    		return true;
-    	}else{
-    		return false;
-    	}
+    public boolean finished(){
+    	return status.equals( JobState.FINISHED ) || status.equals( JobState.ERROR );
 	}
-
+    
+    /**
+     * Runs a new thread to execute the job parallel
+     */
 	public void execute() {
-		// TODO start an execution thread
-		try {
-			this.frontend.execute(this.script);
-			this.result = frontend.getOutputPaths();
-			this.status = JobState.FINISHED;
-		} catch (QueryParserException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-			
+		executor.run();
 	}
 	
 	/**
@@ -144,5 +192,6 @@ public class RRJob {
 	public String toString(){		
 		return "RoundRobinJob from Client " + clientID + " with job ID " + jobID + ". Current Status: " + status;
 	}
-
+	
+	
 }

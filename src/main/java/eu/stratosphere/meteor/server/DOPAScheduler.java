@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.NoSuchElementException;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -46,13 +47,12 @@ public class DOPAScheduler {
 	 * Collection of all jobs to iterate through while working process.
 	 * Each element is just a reference to job object in workingJobsCollection or in finishedJobsCollection.
 	 */
-	private RoundRobin<String, RRJob> roundRobinJobList;
+	private RoundRobin submittedJobs;
 	
 	/**
-	 * Map about clients and their jobs. Identified by clientID and jobID.
-	 * <clientID, <jobID, JobObject>>
+	 * The currently executing job.
 	 */
-	private HashMap<String, HashMap<String, RRJob>> workingJobsCollection;
+	private RRJob curr_WorkingJob;
 	
 	/**
 	 * Same like workingJobsCollection above. Filled with finished jobs.
@@ -79,8 +79,8 @@ public class DOPAScheduler {
 	 * once. Note that only one client per system is allowed.
 	 */
 	private DOPAScheduler() {
-		this.roundRobinJobList = new RoundRobin<String, RRJob>();
-		this.workingJobsCollection = new HashMap<String, HashMap<String, RRJob>>();
+		this.submittedJobs = new RoundRobin();
+		this.curr_WorkingJob = null;
 		this.finishedJobsCollection = new HashMap<String, HashMap<String, RRJob>>();
 	}
 	
@@ -100,18 +100,11 @@ public class DOPAScheduler {
 	 */
 	private void handleIncomingJob( String clientID, String jobID, BasicProperties properties, byte[] script ){
 		DOPAScheduler.LOG.info("New job received. JobID: " + jobID );
+		RRJob job;
 		
-		// is this job in working list yet
-		RRJob job = getWorkingJob( clientID, jobID );
-		if ( job != null ) { // if yes delete it
-			job = workingJobsCollection.get( clientID ).remove(jobID);
-			roundRobinJobList.remove(clientID, job);
-		}
-		
-		// is this job still finished
-		job = getFinishedJob( clientID, jobID );
-		// delete it
-		if ( job != null ) job = finishedJobsCollection.get(clientID).remove(job);
+		// removes the job. if this job doesn't existed in the working list removes it from the finished job list
+		if ( !submittedJobs.remove(clientID, jobID) );
+			this.removeFinishedJob(clientID, jobID);
 		
 		try {
 			// create new job
@@ -119,15 +112,12 @@ public class DOPAScheduler {
 			String meteorScript = new String( script, encoding );
 			Date submitTime = properties.getTimestamp();
 			
+			// create job
 			job = new RRJob( clientID, jobID, meteorScript, submitTime );
 			
 			// put to existing list or create once
-			HashMap<String, RRJob> clients = workingJobsCollection.get(clientID);
-			if ( clients == null ) clients = workingJobsCollection.put(clientID, new HashMap<String, RRJob>());
-			clients.put(jobID, job);
-			
-			// added to working list
-			roundRobinJobList.add( clientID, job );
+			submittedJobs.add(clientID, job);
+			finishedJobsCollection.put(clientID, new HashMap<String, RRJob>());
 			
 			// send new job status to client
 			statusUpdate( clientID, jobID );
@@ -186,13 +176,16 @@ public class DOPAScheduler {
 	 */
 	private void statusUpdate( String clientID, String jobID ){
 		//get the specified RRjob from the workingJobsCollection by the ClientID and the JobID
-		RRJob job = getWorkingJob( clientID, jobID );
+		RRJob job = submittedJobs.get(clientID, jobID);
 		if ( job == null ) job = getFinishedJob( clientID, jobID );
 		
 		// build json object for reply
 		JSONObject jobStatus;
-		if ( job != null ) jobStatus = MessageBuilder.buildJobStatus( clientID, jobID, job.getStatus() );
-		else jobStatus = MessageBuilder.buildJobStatus( clientID, jobID, JobState.DELETED );
+		
+		// if job still doesn't exists (no working job, no finished job) the status is deleted.
+		if ( job == null ) jobStatus = MessageBuilder.buildJobStatus( clientID, jobID, JobState.DELETED );
+		else if ( job.getStatus().equals( JobState.ERROR ) ) jobStatus = job.getErrorJSON();
+		else jobStatus = MessageBuilder.buildJobStatus( clientID, jobID, job.getStatus() );
 		
 		// send reply
 		try { this.connectionFactory.sendJobStatus( clientID, jobStatus ); }
@@ -217,8 +210,10 @@ public class DOPAScheduler {
 		JSONObject reply = MessageBuilder.buildGetLink(clientID, jobID, idx);
 		
 		if ( job != null ) reply = MessageBuilder.addPath( reply, job.getResult(idx) );
-		else reply = MessageBuilder.addPath( reply, "" );
-		// TODO have to send error message or something that can handled
+		else reply = MessageBuilder.buildErrorMethod(
+				clientID, 
+				"The job with the ID: '" + jobID + "' doesn't finished yet or exists anymore. "
+						+ "Ask for the status if you're not sure whether this job exists.");
 		
 		// send message
 		try { this.connectionFactory.replyRequest( properties, reply ); }
@@ -231,13 +226,8 @@ public class DOPAScheduler {
 	 * @param jobID specified job
 	 */
 	private void abortJob( String clientID, String jobID ){
-		//get the specified RRjob from the workingJobsCollection by the ClientID and the JobID
-		HashMap<String, RRJob> clientMap = workingJobsCollection.get(clientID);
-		HashMap<String, RRJob> finClientMap = workingJobsCollection.get(clientMap);
-		
-		// if exists, delete it
-		if ( clientMap != null ) clientMap.remove(jobID);
-		if ( finClientMap != null ) finClientMap.remove(jobID);
+		if ( !submittedJobs.remove(clientID, jobID) )
+			this.removeFinishedJob(clientID, jobID);
 		
 		// send new status
 		JSONObject reply = MessageBuilder.buildJobStatus( clientID, jobID, JobState.DELETED );
@@ -248,32 +238,40 @@ public class DOPAScheduler {
 	}
 	
 	/**
-	 * TODO
-	 * @param clientID
-	 * @param jobID
-	 * @param delivery
+	 * Create a new thread that sends the result blocks back to the client.
+	 * It allows to send blocks for different jobs by using multi-threading.
+	 * @param clientID for this job
+	 * @param jobID for the job
+	 * @param delivery request from the client
 	 */
 	private void sendResult( String clientID, String jobID, Delivery delivery ){
-		RRJob job = this.finishedJobsCollection.get(clientID).get(jobID);
-		if ( job == null ) return; // TODO any error message to resultConsumer
+		RRJob job = this.getFinishedJob(clientID, jobID);
+		if ( job == null ) {
+			String errorMsg = "Your specified job with the ID: '"+jobID+"' ";
+			if ( submittedJobs.contains(clientID, jobID) )
+				errorMsg += "doesn't finished yet. You cannot ask for the result at this stage.";
+			else errorMsg += "doesn't exists on the server.";
+			sendErrorMessage( delivery.getProperties(), clientID, errorMsg );
+			return;
+		}
 		
-		// TODO multi-threading!
 		FileSender sender = new FileSender( this.connectionFactory, job, delivery );
 		sender.run();
 	}
 	
 	/**
-	 * Test whether specified job contains in working list. If it is so it returns the job object,
-	 * otherwise returns null.
+	 * Sends an error message back to the client. The properties have to come from a request!
+	 * @param props
 	 * @param clientID
-	 * @param jobID
-	 * @return RRjob if its exists, otherwise null
+	 * @param errorMessage
 	 */
-	private RRJob getWorkingJob( String clientID, String jobID ){
-		RRJob job = null;
-		HashMap<String, RRJob> clientMap = workingJobsCollection.get(clientID);
-		if ( clientMap != null ) job = clientMap.get(jobID);
-		return job;
+	private void sendErrorMessage( BasicProperties props, String clientID, String errorMessage ){
+		JSONObject err = MessageBuilder.buildErrorMethod(clientID, errorMessage);
+		try {
+			this.connectionFactory.replyRequest(props, err);
+		} catch (IllegalArgumentException | IOException e) {
+			DOPAScheduler.LOG.error( "Cannot send the error message to " + clientID, e );
+		} 
 	}
 	
 	/**
@@ -284,33 +282,59 @@ public class DOPAScheduler {
 	 * @return RRjob if its exists, otherwise null
 	 */
 	private RRJob getFinishedJob( String clientID, String jobID ){
-		RRJob job = null;
 		HashMap<String, RRJob> clientMap = finishedJobsCollection.get(clientID);
-		if ( clientMap != null ) job = clientMap.get(jobID);
-		return job;
+		if ( clientMap != null ) return clientMap.get(jobID);
+		return null;
 	}
 	
 	/**
-	 * TODO
-	 * work on the jobList from job list in round robin for WORKING_TIME seconds
+	 * Removes a finished job and returns true if that changes anything or false if not.
+	 * @param clientID
+	 * @param jobID
+	 * @return true if it changed the list or false if not
+	 */
+	private boolean removeFinishedJob( String clientID, String jobID ){
+		RRJob job = getFinishedJob( clientID, jobID );
+		if ( job == null ) return false;
+		return finishedJobsCollection.get(clientID).remove(jobID) != null;
+	}
+	
+	/**
+	 * This method works on jobs. There is only one job running at the same time.
 	 */
 	private void workOnJobs(){
-		//take first job from the job-list and its status
-		RRJob currentJob = roundRobinJobList.next();
-		
-		if ( currentJob == null ){
-			// clean garbage
-			roundRobinJobList.hardReset();
-			return;
+		// if there is a job find out its status
+		if ( this.curr_WorkingJob != null ){
+			
+			// if this job is still in process
+			if ( this.curr_WorkingJob.finished() ) {
+				// add job to finished job list
+				this.finishedJobsCollection.get( 
+						curr_WorkingJob.getClientID() ).put( curr_WorkingJob.getJobID(), curr_WorkingJob);
+				
+				// inform client that its job finished
+				this.statusUpdate(this.curr_WorkingJob.getClientID(), this.curr_WorkingJob.getJobID());
+				
+				// working with new jobs
+				curr_WorkingJob = null;
+			} else return; // go on with it!
 		}
 		
-		//execute the current job
-		//currentJob.execute();
+		//take first job from the job-list and its status
+		try { curr_WorkingJob = submittedJobs.next(); }
+		catch ( NoSuchElementException nsee ){}
 		
-		// TODO TEST
-		HashMap<String, RRJob> tmpMap = new HashMap<String, RRJob>();
-		tmpMap.put(currentJob.getJobID(), currentJob);
-		this.finishedJobsCollection.put(currentJob.getClientID(), tmpMap);
+		// nothing to do here as well
+		if ( curr_WorkingJob == null ) return;
+		
+		// execute the current job
+		curr_WorkingJob.execute();
+		
+		// inform administrator about new job executions
+		DOPAScheduler.LOG.info( "New job executed. " + curr_WorkingJob.getJobID() );
+		
+		// inform the client that the status changed now
+		statusUpdate( curr_WorkingJob.getClientID(), curr_WorkingJob.getJobID() );
 	}
 	
 	/**
@@ -321,10 +345,10 @@ public class DOPAScheduler {
 	 * @return true if the client got the rights, false otherwise
 	 */
 	protected boolean addClient(String clientID) {
-		if ( workingJobsCollection.containsKey(clientID) ) return false;
+		if ( finishedJobsCollection.containsKey(clientID) ) return false;
 		else {
-			workingJobsCollection.put(clientID, new HashMap<String, RRJob>());
 			finishedJobsCollection.put( clientID, new HashMap<String, RRJob>());
+			submittedJobs.add(clientID);
 			DOPAScheduler.LOG.info("Client '" + clientID + "' registered.");
 		}
 		return true;
@@ -335,20 +359,12 @@ public class DOPAScheduler {
 	 * @param clientID
 	 * @return true if client removed well, false otherwise
 	 */
-	protected boolean removeClient( String clientID ){
-		// TODO allowed? if not return false
-		
+	protected void removeClient( String clientID ){
 		// remove client and all jobs from this client from working list
-		roundRobinJobList.remove(clientID);
-		
-		//HashMap<String, RRJob> map = workingJobsCollection.remove(clientID);
-		//for ( String key : map.keySet() ) jobList.remove( map.get(key) );
+		submittedJobs.remove(clientID);
 		
 		// remove finished jobs as well
 		finishedJobsCollection.remove(clientID);
-		
-		// finished
-		return true;
 	}
 	
 	/**
@@ -367,7 +383,7 @@ public class DOPAScheduler {
 			Delivery delivery = connectionFactory.getRequest( WAITING_TIME );
 			
 			// if nothing todo at all, sleep a bit and continue after wake up
-			if ( delivery == null && !roundRobinJobList.hasNext() ){
+			if ( delivery == null && !submittedJobs.hasNext() ){
 				try { Thread.sleep( WAITING_TIME ); } 
 				catch (InterruptedException e) { Thread.interrupted(); }
 				continue;
@@ -389,26 +405,8 @@ public class DOPAScheduler {
 				}
 			} // end if delivery != null
 			
-			/**
-			 * execute jobList via round robin algorithm here
-			 */
+			// execute jobList via round robin algorithm 
 			workOnJobs();
-			
-			/**
-			 * TODO
-			 * inform clientList about new states or some other stuff here
-			 */
-			
-			/**
-			 * TODO
-			 * possibly traffic with hadoop here
-			 */
-			
-			/**
-			 * TODO all other stuff here
-			 * maybe clean garbage like delete finished jobList or something like that
-			 * inform clientList if you want to delete something, we have to discuss it as well
-			 */
 			
 			// System yield, to keep this time as short as possible use setSchedulerPriority( int priority )
 			Thread.yield();
@@ -471,11 +469,20 @@ public class DOPAScheduler {
 	}
 	
 	/**
-	 * TODO we have to discuss the best initialization way on the scheduler site.
+	 * TODO
+	 * You just have to specified the nephele configuration directory with
+	 * 		-configDir <nephele-config-directory-path>
+	 * Other specifications arn't needed.
+	 * 
 	 * @param args
-	 * @throws UnsupportedEncodingException
 	 */
 	public static void main( String[] args ){
+		if ( args != null && args.length >= 2 ){
+			// get config dir!
+			SchedulerConfigConstants.EXECUTER_CONFIG[0] = args[0];
+			SchedulerConfigConstants.EXECUTER_CONFIG[1] = args[1];
+		}
+		
 		DOPAScheduler scheduler = createNewSchedulerSystem();
 		scheduler.start();
 	}

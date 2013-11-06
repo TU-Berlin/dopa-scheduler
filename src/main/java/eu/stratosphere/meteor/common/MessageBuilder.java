@@ -24,7 +24,8 @@ public class MessageBuilder {
 		JOB_STATUS, // ask for status of a specified job
 		JOB_ABORT, // want to abort a specified job
 		GET_LINK, // get result links of a finished job
-		REQUEST_RESULT; // get result of a finished job
+		REQUEST_RESULT, // get result of a finished job
+		ERROR; // error message - not really a request type but a message type
 		
 		/**
 		 * Key for request type itself
@@ -45,6 +46,7 @@ public class MessageBuilder {
 		private static final String JID = "JobID";
 		private static final String JST = "JobStatus";
 		private static final String PAT = "Path";
+		private static final String ERR = "Error";
 		
 		/**
 		 * Returns the request type object by a specified JSONObject.
@@ -109,6 +111,21 @@ public class MessageBuilder {
 	}
 	
 	/**
+	 * Build an error status object with given error message
+	 * @param clientID
+	 * @param jobID
+	 * @param errorMessage
+	 * @return json request object
+	 */
+	public static JSONObject buildErrorStatus( String clientID, String jobID, String errorMessage ){
+		try {
+			JSONObject obj = MessageBuilder.buildJobStatus( clientID, jobID, JobState.ERROR );
+			obj.put( RequestType.ERR, errorMessage );
+			return obj;
+		} catch (JSONException e) { return null; }
+	}
+	
+	/**
 	 * Returns the json object to try to abort a specified job.
 	 * @param clientID of client
 	 * @param jobID of job
@@ -149,6 +166,24 @@ public class MessageBuilder {
 			obj.put( RequestType.FDX, fileIndex );
 			obj.put( RequestType.BLOCKSIZE, desiredBlockSize );
 			obj.put( RequestType.MAXBLOCKS, maxNumOfBlocks );
+		} catch ( JSONException e ){}
+		
+		return obj;
+	}
+	
+	/**
+	 * Creates an error message as a json object to a specified client.
+	 * @param clientID receiver
+	 * @param errorMessage message
+	 * @return JSONObject with error message
+	 */
+	public static JSONObject buildErrorMethod( String clientID, String errorMessage ){
+		JSONObject obj = RequestType.ERROR.createJSONRequest(clientID, "");
+		
+		try {
+			// remove the not used jobID
+			obj.remove( RequestType.JID );
+			obj.put( RequestType.ERR, errorMessage);
 		} catch ( JSONException e ){}
 		
 		return obj;
@@ -205,6 +240,16 @@ public class MessageBuilder {
 	 */
 	public static String getLink( JSONObject request ){
 		try { return request.getString( RequestType.PAT ); }
+		catch (JSONException e) { return null; }
+	}
+	
+	/**
+	 * Returns the error message
+	 * @param request
+	 * @return error message
+	 */
+	public static String getErrorMessage( JSONObject request ){
+		try { return request.getString( RequestType.ERR ); }
 		catch (JSONException e) { return null; }
 	}
 	

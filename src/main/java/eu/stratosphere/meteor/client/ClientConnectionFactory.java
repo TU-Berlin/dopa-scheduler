@@ -124,14 +124,14 @@ public class ClientConnectionFactory {
 		QueueingConsumer.Delivery delivery = handShakeConsumer.nextDelivery();
 		String status_exchange = new String( delivery.getBody(), charset );
 		
-		if ( !status_exchange.matches("sorry") ){
+		if ( !status_exchange.matches("Still registered!") ){
 			// bind the queue with the exchange
 			this.statusChannel.queueBind( 
 					this.statusQueue, 
 					status_exchange, 
 					SchedulerConfigConstants.getRoutingKey( client.getClientID() ) );
 		} else {
-			DOPAClient.LOG.error("Not allowed to connect with the scheduler. Fail handshake process.");
+			DOPAClient.LOG.error("Not allowed to connect with the scheduler. A client with your ID is still registered.");
 		}
 		
 		// close and delete all handshake components
