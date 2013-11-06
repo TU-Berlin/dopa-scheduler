@@ -1,7 +1,9 @@
 package eu.stratosphere.meteor.server.executor;
 
+import java.io.DataInputStream;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.Charset;
@@ -10,6 +12,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -24,6 +27,13 @@ import eu.stratosphere.meteor.common.MessageBuilder;
 import eu.stratosphere.meteor.server.DOPAScheduler;
 import eu.stratosphere.meteor.server.ServerConnectionFactory;
 
+/**
+ * This class sends a file (from local file system or hadoop) back to the client.
+ * The FileSender separates the file to blocks and send each block back to the client.
+ *
+ * @author André Greiner-Petter
+ *
+ */
 public class FileSender extends Thread {
 	/**
 	 * The default encoding type of hadoop. We don't change that.
@@ -40,11 +50,6 @@ public class FileSender extends Thread {
 	 * Pattern to get path to local file system
 	 */
 	private static final Pattern localPattern = Pattern.compile("file://(/[\\w\\./:\\-_]+)");
-	
-	/**
-	 * Max block size 50MB
-	 */
-	private final int MAX_BLOCK_SIZE = 50 * 1024 * 1024;
 	
 	/**
 	 * High Distributed File System
@@ -67,8 +72,6 @@ public class FileSender extends Thread {
 	private final BasicProperties requestProps;
 	
 	private Charset charset;
-	
-	private byte[] fileBytes;
 	
 	/**
 	 * Block informations
@@ -116,19 +119,17 @@ public class FileSender extends Thread {
 		try { request = new JSONObject( new String( delivery.getBody(), charset ) ); }
 		catch (JSONException e) { return; } // never reached that catch clause
 		
-		// save desired block size from client and choose 
-		int disiredBlockSize = MessageBuilder.getDesiredBlockSize(request);
-		blockSize = disiredBlockSize >= MAX_BLOCK_SIZE ? MAX_BLOCK_SIZE : disiredBlockSize;
+		// save desired block size from client
+		int desiredBlockSize = MessageBuilder.getDesiredBlockSize(request);
 		
+		// if the desired size is quite to big we set to specific maximum
+		if ( desiredBlockSize >= SchedulerConfigConstants.MAX_BLOCK_SIZE )
+			blockSize = SchedulerConfigConstants.MAX_BLOCK_SIZE;
+		else blockSize = desiredBlockSize;
+		
+		// after all sets the sum of all blocks to default ( it will be changed later )
 		sumOfBlocks = MessageBuilder.getMaxNumOfBlocks(request);
 		fileIndex = MessageBuilder.getFileIndex(request);
-		
-//		file = getFile( job );
-//		fileBytes = file.getBytes( charset ); // TODO may to big?
-//		
-//		if ( fileBytes.length/blockSize > maxBlockNumber ){
-//			blockSize = (int) (fileBytes.length/maxBlockNumber); // +/- one?
-//		} else sumOfBlocks = (fileBytes.length+1) / blockSize; // same here as well
 	}
 	
 	/**
@@ -137,8 +138,118 @@ public class FileSender extends Thread {
 	@Override
 	public void run(){
 		// open connection to HDFS
+		String host = null;
+		String path = null;
+		FileStatus fileStatus = null;
 		
+		// test whether the link is a local file. In this case we have to use a quite other method
+		Matcher matcher = localPattern.matcher( job.getResult(fileIndex) );
+		if ( matcher.find() ){
+			this.runLocal( matcher.group(1) );
+			return;
+		}
 		
+		// get hdfs paths
+		matcher = hdfsPattern.matcher( job.getResult(fileIndex) );
+		if ( matcher.find() ) {
+			host = matcher.group(1);
+			path = matcher.group(2);
+		}
+		
+		// try to get the file status
+		if ( host != null && path != null ){
+			try { 
+				fileStatus = this.getFileStates(host, path)[0];
+				if ( fileStatus == null ) throw new Exception( "No files found at " + path );
+			}
+			catch ( Exception e ){ 
+				DOPAScheduler.LOG.error("Cannot get the file to send results back to the client.", e); 
+			}
+		}
+		
+		// calculate block size or change 
+		if ( fileStatus.getLen() / blockSize > sumOfBlocks )
+			blockSize = (int) (fileStatus.getLen()/sumOfBlocks);
+		else sumOfBlocks = (fileStatus.getLen()+1) / blockSize;
+		
+		/** Sends informations about following blocks back to the client **/
+		
+		// first send specifications
+		try { this.sendSpecifications(); }
+		catch (IllegalArgumentException | IOException e) {
+			DOPAScheduler.LOG.error("Cannot send informations about the following blocks to the client.", e);
+			return;
+		}
+		
+		// after send the informations of blocks, send the blocks itself
+		try ( FSDataInputStream in = new FSDataInputStream( hdfs.open( fileStatus.getPath() ) ) ) {
+			// create a buffer
+			byte[] buffer = new byte[blockSize];
+			
+			// read as long as you can
+			int len = in.read( buffer );
+			while ( len > 0 ){
+				// if we reached the end just send the smaller block, else send complete block
+				if ( len < blockSize ) connFac.sendBlock(requestProps, Arrays.copyOfRange(buffer, 0, len));
+				else connFac.sendBlock(requestProps, buffer);
+				
+				len = in.read( buffer );
+			} // finally closed channels
+		} catch ( IllegalArgumentException iae ){
+			DOPAScheduler.LOG.error("Cannot send with this properties.", iae);
+		} catch ( IOException ioe ){
+			DOPAScheduler.LOG.error("Cannod send blocks of result file.", ioe);
+		}
+	}
+	
+	/**
+	 * Handle a local file as a result. Quite different implementation to a file on hadoop.
+	 * But the idea is just the same.
+	 * @param path to local file
+	 */
+	private void runLocal( String path ){
+		File file = new File( path );
+		if ( file.isDirectory() || !file.exists() ){
+			DOPAScheduler.LOG.error("Given file is not a directory or doesn't exists: " + path);
+			return;
+		}
+		
+		// calculate block size or change 
+		if ( file.length() / blockSize > sumOfBlocks )
+			blockSize = (int) ( file.length()/sumOfBlocks);
+		else sumOfBlocks = (file.length()+1) / blockSize;
+		
+		// send specifications
+		try { this.sendSpecifications(); }
+		catch (IllegalArgumentException | IOException e) {
+			DOPAScheduler.LOG.error("Cannot send informations about the following blocks to the client.", e);
+			return;
+		}
+		
+		// open streams, read and send input
+		try ( DataInputStream in = new DataInputStream( new FileInputStream( file ) ) ){
+			byte[] buffer = new byte[blockSize];
+			
+			// read from buffer as long as you can
+			int len = in.read( buffer );
+			while ( len > 0 ){
+				// if we reached the end just send the smaller block, else send complete block
+				if ( len < blockSize ) connFac.sendBlock(requestProps, Arrays.copyOfRange(buffer, 0, len));
+				else connFac.sendBlock(requestProps, buffer);
+				
+				len = in.read( buffer );
+			}
+		} catch ( IOException ioe ){
+			DOPAScheduler.LOG.error( "Cannot read from local file. A streaming error occurred.", ioe);
+		}
+	}
+	
+	/**
+	 * Sends the specifications. Should be defined before you send the specifications to the client.
+	 * @throws IllegalArgumentException if one or more informations lost
+	 * @throws IOException if cannot send the message
+	 */
+	private void sendSpecifications() throws IllegalArgumentException, IOException{
 		// choose definitions and send informations to client
 		JSONObject obj = MessageBuilder.buildRequestResult(
 				job.getClientID(), 
@@ -148,23 +259,7 @@ public class FileSender extends Thread {
 				sumOfBlocks);
 		
 		// first send json with informations
-		try {
-			connFac.replyRequest( requestProps, obj );
-		} catch (IllegalArgumentException | IOException e) {
-			e.printStackTrace();
-		}
-		
-		// send block per block
-		for ( int idx = 0; idx < sumOfBlocks; idx++ ){
-			try {
-				// TODO length? and more efficient way! (may with ByteBuffer)
-				connFac.sendBlock(requestProps, Arrays.copyOfRange(fileBytes, idx*blockSize, (idx+1)*blockSize));
-			} catch (IllegalArgumentException e) {
-				e.printStackTrace();
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-		}
+		connFac.replyRequest( requestProps, obj );
 	}
 	
 	/**

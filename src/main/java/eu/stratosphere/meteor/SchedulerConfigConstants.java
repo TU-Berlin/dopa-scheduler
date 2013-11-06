@@ -79,6 +79,18 @@ public final class SchedulerConfigConstants {
 	public static final String JSON = "application/json";
 	
 	/**
+	 * The maximum size of blocks the scheduler would send back to the client (in bytes).
+	 * It just allows to be an integer ( 2^32 ~ 4GB ) cause these blocks are just byte[].
+	 * By default you can set it to 100 * 1024 * 1024 = 100 MB!
+	 */
+	public static final int MAX_BLOCK_SIZE = 100 * 1024 * 1024;
+	
+	/**
+	 * The default configuration to submitting a job.
+	 */
+	public static String[] EXECUTER_CONFIG = new String[]{ "--configDir", "../conf", "--updateTime", "1000", "--wait" };
+	
+	/**
 	 * Generate a key by given queueName. This method warrant consistency.
 	 * @param queueName given name of a queue
 	 * @return the unique key for this queue
