@@ -37,9 +37,8 @@ public class ResultFileBlock {
 		this.informationLength = block.length;
 		
 		this.block = new byte[blockSize];
-		for ( int i = 0; i < block.length; i++ )
-			this.block[i] = block[i];
-		
+        System.arraycopy(block, 0, this.block, 0, block.length);
+
 		System.out.println( stringRepresentation );
 	}
 
