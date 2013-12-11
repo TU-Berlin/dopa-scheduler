@@ -3,7 +3,13 @@
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 
 	<modelVersion>4.0.0</modelVersion>
-	<repositories>
+    <packaging>pom</packaging>
+    <modules>
+        <module>meteor-scheduler-client</module>
+        <module>meteor-scheduler-common</module>
+        <module>meteor-scheduler-server</module>
+    </modules>
+    <repositories>
 		<repository>
 			<id>snapshots-repo</id>
 			<url>https://oss.sonatype.org/content/repositories/snapshots</url>
