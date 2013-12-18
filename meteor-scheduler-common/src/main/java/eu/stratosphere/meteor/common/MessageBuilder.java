@@ -119,7 +119,7 @@ public class MessageBuilder {
 	 */
 	public static JSONObject buildErrorStatus( String clientID, String jobID, String errorMessage ){
 		try {
-			JSONObject obj = MessageBuilder.buildJobStatus( clientID, jobID, JobState.ERROR );
+			JSONObject obj = MessageBuilder.buildJobStatus(clientID, jobID, JobState.ERROR);
 			obj.put( RequestType.ERR, errorMessage );
 			return obj;
 		} catch (JSONException e) { return null; }
@@ -177,18 +177,17 @@ public class MessageBuilder {
 	 * @param errorMessage message
 	 * @return JSONObject with error message
 	 */
-	public static JSONObject buildErrorMethod( String clientID, String errorMessage ){
+	public static JSONObject buildJoblessError( String clientID, String errorMessage ){
 		JSONObject obj = RequestType.ERROR.createJSONRequest(clientID, "");
-		
-		try {
+			try {
 			// remove the not used jobID
-			obj.remove( RequestType.JID );
+			obj.remove(RequestType.JID);
 			obj.put( RequestType.ERR, errorMessage);
 		} catch ( JSONException e ){}
-		
+
 		return obj;
 	}
-	
+
 	/**
 	 * Adds the path information to specified json object.
 	 * @param obj get new input

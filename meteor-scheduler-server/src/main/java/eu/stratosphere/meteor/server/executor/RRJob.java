@@ -91,7 +91,7 @@ public class RRJob {
 	 */
 	protected void setErrorMessage( String error ){
 		this.status = JobState.ERROR;
-		this.errorJSON = MessageBuilder.buildErrorMethod(clientID, error);
+		this.errorJSON = MessageBuilder.buildErrorStatus(clientID, jobID, error);
 	}
 	
 	/**

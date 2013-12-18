@@ -210,8 +210,8 @@ public class DOPAScheduler {
 		JSONObject reply = MessageBuilder.buildGetLink(clientID, jobID, idx);
 		
 		if ( job != null ) reply = MessageBuilder.addPath( reply, job.getResult(idx) );
-		else reply = MessageBuilder.buildErrorMethod(
-				clientID, 
+		else reply = MessageBuilder.buildErrorStatus(
+				clientID, jobID,
 				"The job with the ID: '" + jobID + "' doesn't finished yet or exists anymore. "
 						+ "Ask for the status if you're not sure whether this job exists.");
 		
@@ -251,7 +251,7 @@ public class DOPAScheduler {
 			if ( submittedJobs.contains(clientID, jobID) )
 				errorMsg += "doesn't finished yet. You cannot ask for the result at this stage.";
 			else errorMsg += "doesn't exists on the server.";
-			sendErrorMessage( delivery.getProperties(), clientID, errorMsg );
+			sendErrorMessage( delivery.getProperties(), clientID, jobID, errorMsg );
 			return;
 		}
 		
@@ -265,8 +265,8 @@ public class DOPAScheduler {
 	 * @param clientID
 	 * @param errorMessage
 	 */
-	private void sendErrorMessage( BasicProperties props, String clientID, String errorMessage ){
-		JSONObject err = MessageBuilder.buildErrorMethod(clientID, errorMessage);
+	private void sendErrorMessage( BasicProperties props, String clientID, String jobID, String errorMessage ){
+		JSONObject err = MessageBuilder.buildErrorStatus(clientID, jobID, errorMessage);
 		try {
 			this.connectionFactory.replyRequest(props, err);
 		} catch (IllegalArgumentException | IOException e) {
