@@ -7,9 +7,12 @@ import org.junit.Test;
 
 public class DOPAClientTest {
 	
-	/**
-	 * PLATZHALTER
-	 */
+	@Test
+    public void testConnectDisconnect () {
+        DOPAClient client = DOPAClient.createNewClient("connectDisconnectID");
+        client.connect();
+        client.disconnect();
+    }
 
 
     @Test

@@ -132,6 +132,7 @@ public class ClientConnectionFactory {
 					SchedulerConfigConstants.getRoutingKey( client.getClientID() ) );
 		} else {
 			DOPAClient.LOG.error("Not allowed to connect with the scheduler. A client with your ID is still registered.");
+            throw new IOException("Duplicate client already registered at server");
 		}
 		
 		// close and delete all handshake components
