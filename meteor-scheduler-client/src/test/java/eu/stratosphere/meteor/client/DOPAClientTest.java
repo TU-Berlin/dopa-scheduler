@@ -1,8 +1,10 @@
 package eu.stratosphere.meteor.client;
 
+import static org.junit.Assert.fail;
 import eu.stratosphere.meteor.common.DSCLJob;
 import eu.stratosphere.meteor.common.JobState;
 import eu.stratosphere.meteor.common.JobStateListener;
+
 import org.junit.Test;
 
 public class DOPAClientTest {
@@ -27,15 +29,20 @@ public class DOPAClientTest {
         };
 
         DSCLJob job = client.createNewJob("PROVOKE SYNTAX ERROR", listener);
-
-
-        while (true) {
-            try {
-                Thread.sleep(1000);
+        
+        long start = System.currentTimeMillis();
+        
+        // wait for 10.000ms = 10 seconds
+        while ( System.currentTimeMillis() - start < 10_000 ) {
+            if ( job.getStatus().equals(JobState.ERROR) )return;
+        	
+            try {Thread.sleep(1000);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
         }
+        
+        fail("Job doesn't finished with an error in 10 seconds.");
     }
 	
 }

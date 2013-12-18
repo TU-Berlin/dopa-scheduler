@@ -181,7 +181,8 @@ public class RRJob {
      * Runs a new thread to execute the job parallel
      */
 	public void execute() {
-		executor.run();
+		this.status = JobState.RUNNING;
+		this.executor.start();
 	}
 	
 	/**

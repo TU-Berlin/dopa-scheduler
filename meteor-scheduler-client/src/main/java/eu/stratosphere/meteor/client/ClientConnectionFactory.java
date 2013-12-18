@@ -45,9 +45,11 @@ public class ClientConnectionFactory {
 	 * This constructor catch all exception in the initialization process and throw
 	 * a general exception with detailed informations.
 	 * 
+	 * @param client the parent of this factory
+	 * @param reconnect true if the clients wants to reconnect to the scheduler, false otherwise
 	 * @throws Exception if the factory cannot initialize connections to rabbitMQ
 	 */
-	protected ClientConnectionFactory( final DOPAClient client ) throws Exception {		
+	protected ClientConnectionFactory( final DOPAClient client, boolean reconnect ) throws Exception {		
 		this.client = client;
 		
 		DOPAClient.LOG.info("Initialize connections to RabbitMQ.");
@@ -67,7 +69,7 @@ public class ClientConnectionFactory {
 			this.statusQueue = this.statusChannel.queueDeclare().getQueue();
 			
 			// subscribe status queue
-			this.subscribe();
+			this.subscribe(reconnect);
 			
 			// consume the status queue
 			this.staticStatusConsumer = new StatusConsumer( this, client, statusChannel );
@@ -90,6 +92,20 @@ public class ClientConnectionFactory {
 	}
 	
 	/**
+	 * Create new channel to connect this client with rabbitMQ and the DOPAScheduler.
+	 * It creates a channel to send request and another channel to get status.
+	 * 
+	 * This constructor catch all exception in the initialization process and throw
+	 * a general exception with detailed informations.
+	 * 
+	 * @param client
+	 * @throws Exception
+	 */
+	protected ClientConnectionFactory( final DOPAClient client ) throws Exception{
+		this ( client, false );
+	}
+	
+	/**
 	 * Subscribes the status queue. This clients need to authenticate itself at the service and get the
 	 * name of exchange for job status. If we get this exchange name we bind our status queue with this 
 	 * exchange with an generatedKey for routingKey.
@@ -99,19 +115,24 @@ public class ClientConnectionFactory {
 	 * @throws ConsumerCancelledException if the staticStatusConsumer cancelled while waiting for an answer
 	 * @throws ShutdownSignalException if rabbitMQ shutdown through handshake
 	 */
-	private void subscribe() 
+	private void subscribe( boolean force ) 
 			throws IOException, ShutdownSignalException, ConsumerCancelledException, InterruptedException{
 		// initialize handshake components
 		String handShakeQueue = this.requestChannel.queueDeclare().getQueue();
 		QueueingConsumer handShakeConsumer = new QueueingConsumer( this.requestChannel );
 		this.requestChannel.basicConsume(handShakeQueue, true, "handShakeConsumer", handShakeConsumer);
 		
-		// create properties for correct encoding and reply
-		BasicProperties props = new BasicProperties.
+		// creates the property builder
+		BasicProperties.Builder builder = new BasicProperties.
 				Builder().
 				replyTo( handShakeQueue ).
-				contentEncoding( charset ).
-				build();
+				contentEncoding( charset );
+		
+		// if this clients wants to reconnect rise up the priority
+		if ( force ) builder.priority( SchedulerConfigConstants.SCHEDULER_RECONNECT_PRIORITY );
+		
+		// create properties for correct encoding and reply
+		BasicProperties props = builder.build();
 		
 		// register on server to get the correct exchange
 		this.requestChannel.basicPublish(
@@ -131,8 +152,8 @@ public class ClientConnectionFactory {
 					status_exchange, 
 					SchedulerConfigConstants.getRoutingKey( client.getClientID() ) );
 		} else {
-			DOPAClient.LOG.error("Not allowed to connect with the scheduler. A client with your ID is still registered.");
-            throw new IOException("Duplicate client already registered at server");
+			DOPAClient.LOG.warn("A client with your ID is still registered. You can use reconnect if you are sure to connect!");
+            throw new InterruptedException("Duplicate client already registered at server");
 		}
 		
 		// close and delete all handshake components
@@ -155,7 +176,7 @@ public class ClientConnectionFactory {
 				SchedulerConfigConstants.REQUEST_EXCHANGE, 
 				"register.logoff", 
 				props, 
-				statusQueue.getBytes( charset ) );
+				client.getClientID().getBytes( charset ) );
 		
 		// delete queue
 		this.statusChannel.queueDelete( statusQueue );

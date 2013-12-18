@@ -28,14 +28,15 @@ public class JobExecutor extends Thread {
 	@Override
 	public void run() {
 		try {
-			job.setStatus( JobState.RUNNING );
 			client.execute( meteorScript );
 			job.setStatus( JobState.FINISHED );
 			job.setOutputStrings( client.getOutputPaths() );
 		} catch (QueryParserException e) {
 			job.setErrorMessage( "Cannot parse the meteor script of your job. " + e.getMessage() );
+			job.setStatus( JobState.ERROR );
 		} catch (IOException e) {
 			job.setErrorMessage( "Cannot execute your job. " + e.getMessage() );
+			job.setStatus( JobState.ERROR );
 		}
 	}
 }

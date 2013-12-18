@@ -15,6 +15,7 @@ import com.rabbitmq.client.ShutdownSignalException;
 import eu.stratosphere.meteor.common.JobState;
 import eu.stratosphere.meteor.common.JobStateListener;
 import eu.stratosphere.meteor.common.MessageBuilder;
+import eu.stratosphere.meteor.common.MessageBuilder.RequestType;
 
 /**
  * This class extends the QueueingConsumer and handle deliveries in a special way.
@@ -56,12 +57,17 @@ public class StatusConsumer extends QueueingConsumer {
 			// get informations to update specified job
 			String jobID = status.getString("JobID");
 			DSCLJobImpl job = (DSCLJobImpl) client.getJobList().get( jobID );
+			
 			JobState newStatus = MessageBuilder.getJobStatus(status);
             MessageBuilder.RequestType requestType = MessageBuilder.RequestType.getRequestType(status);
 			
-			if ( requestType.equals(MessageBuilder.RequestType.ERROR) ) {
+            if ( requestType.equals( RequestType.ERROR ) || newStatus == null ){
+            	DOPAClient.LOG.error("The scheduler published an error: '" + 
+            			MessageBuilder.getErrorMessage(status) + "'");
+            	return;
+            } else if ( newStatus.equals( JobState.ERROR ) ) {
 				String msg = "Server published an error message of specified Job: " + jobID + "; "
-						+ "With error message: " + MessageBuilder.getErrorMessage(status);
+						+ "With error message: '" + MessageBuilder.getErrorMessage(status) + "'";
 				DOPAClient.LOG.warn( msg );
 			} else DOPAClient.LOG.info( "Status update! JobID: " + jobID + ", New job status: " + newStatus );
 			
