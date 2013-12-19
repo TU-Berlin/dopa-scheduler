@@ -89,36 +89,66 @@ public class DOPAClient {
 	 * Try to connect the client with the scheduler services.
 	 * If this failed for any reason you can try it again.
 	 * 
-	 * It do nothing if the client is still connected.
+	 * It does nothing if the client is still connected.
+     *
+     * @return <code>true</code> if the client was successfully connected or the client was already connected,
+     *      <code>false</code> if the client was not connected to the server
 	 */
-	public void connect() {
+	public boolean connect() {
 		// if the client is still connect
 		if ( this.connectionFac != null ) {
 			LOG.error( "The client is still connected. If you want to reconnect the client disconnect it first." );
-			return;
+			return true;
 		}
 		
 		// else try to connect it
-		try { this.connectionFac = new ClientConnectionFactory( this ); }
-		catch ( Exception exc ) { LOG.error( "Cannot connected to the scheduler services!", exc ); }
+		try {
+            this.connectionFac = new ClientConnectionFactory( this );
+            return true;
+        }
+		catch ( Exception exc ) {
+            LOG.error( "Cannot connected to the scheduler services!", exc );
+        }
+        return false;
 	}
 	
 	/**
-	 * Try to reconnect the client with the scheduler services.
-	 * 
-	 * Nothing happened if this client is still connected.
+	 * Tries to reconnect the client with the scheduler services.
+	 * Does nothing if this client is still connected.
+     * Use this method if you want to reconnect to the scheduler but didn't properly disconnect before.
+     * This is especially useful if you client crashed and the scheduler assumes it is still connected.
+     *
+     * ¡Use this method with great care!
+     * We only support one active client instance per client ID. Reconnect only if you are sure the previous
+     * client instance that created the connection is not running anymore!
+     *
+     * * @return <code>true</code> if the client was successfully reconnected or the client was already connected,
+     *      <code>false</code> if the client was not reconnected to the server
 	 */
-	public void reconnect(){
+	public boolean reconnect(){
 		// if the client is still connect
 		if ( this.connectionFac != null ) {
 			LOG.error( "The client is still connected. If you want to reconnect the client disconnect it first." );
-			return;
+			return true;
 		}
 		
 		// try to reconnect
-		try { this.connectionFac = new ClientConnectionFactory( this, true ); }
-		catch ( Exception exc ) { LOG.error("Cannot reconnect to the scheduler services!", exc); }
+		try { this.connectionFac = new ClientConnectionFactory( this, true );
+            return true;
+        }
+		catch ( Exception exc ) {
+            LOG.error("Cannot reconnect to the scheduler services!", exc);
+        }
+        return false;
 	}
+
+    /**
+     * Check whether this client is connected to the server
+     * @return <code>true</code> if this client is connected to the server
+     */
+    public boolean isConnected () {
+        return this.connectionFac != null;
+    }
 	
 	/**
 	 * Try to disconnect the client. 
