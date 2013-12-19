@@ -22,6 +22,11 @@ public final class SchedulerConfigConstants {
 	public static final int SCHEDULER_PORT = 5672;
 	
 	/**
+	 * The message priority to force the scheduler to reconnect the client.
+	 */
+	public static final int SCHEDULER_RECONNECT_PRIORITY = 10;
+	
+	/**
 	 * The exchange name to handle requests from clients.
 	 */
 	public static final String REQUEST_EXCHANGE = "dopa.scheduler.exchange.request";
@@ -57,7 +62,6 @@ public final class SchedulerConfigConstants {
 	/**
 	 * The routing key mask for requests.
 	 * 
-	 * TODO which informations contains the routing key?
 	 * Routing Key: requestStatus
 	 */
 	public static final String REQUEST_KEY_MASK = "request";

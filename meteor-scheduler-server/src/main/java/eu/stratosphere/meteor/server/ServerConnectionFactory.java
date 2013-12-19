@@ -81,8 +81,9 @@ public class ServerConnectionFactory {
 	/**
 	 * This default constructor initialize all connections and queues for the complete server side.
 	 * To change settings for this you have to change the constants in {@link SchedulerConfigConstants}.
+	 * @throws IOException if the scheduler cannot connect to rabbitMQ
 	 */
-	protected ServerConnectionFactory( final DOPAScheduler scheduler ){
+	protected ServerConnectionFactory( final DOPAScheduler scheduler ) throws IOException{
 		this.scheduler = scheduler;
 		
 		DOPAScheduler.LOG.info("Initialize connections to RabbitMQ.");
@@ -116,6 +117,7 @@ public class ServerConnectionFactory {
 			DOPAScheduler.LOG.info("Succeed! Your scheduler is now connected with RabbitMQ.");
 		} catch ( IOException e ) {
 			DOPAScheduler.LOG.error("Cannot initialize connections to RabbitMQ.", e);
+			throw new IOException("Fail to connect to RabbitMQ.");
 		}
 	}
 	
@@ -189,9 +191,10 @@ public class ServerConnectionFactory {
 		
 		// try to add new client
 		boolean isAllowed = scheduler.addClient( new String( delivery.getBody(), encoding ) );
+		Integer priority = delivery.getProperties().getPriority();
 		
 		// if client added as well
-		if ( isAllowed ){
+		if ( isAllowed || (priority != null && priority == SchedulerConfigConstants.SCHEDULER_RECONNECT_PRIORITY) ){
 			this.requestChannel.basicPublish(
 					"", 
 					replyQueue, 

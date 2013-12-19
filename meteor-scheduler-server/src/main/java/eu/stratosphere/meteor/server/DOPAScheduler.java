@@ -4,9 +4,11 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.NoSuchElementException;
 
 import eu.stratosphere.meteor.common.SchedulerConfigConstants;
+
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.json.JSONException;
@@ -55,9 +57,15 @@ public class DOPAScheduler {
 	private RRJob curr_WorkingJob;
 	
 	/**
-	 * Same like workingJobsCollection above. Filled with finished jobs.
+	 * Contains the finished jobs sorted by clientID and jobID.
+	 * <ClientID -> <JobID -> RRJob>>
 	 */
 	private HashMap<String, HashMap<String, RRJob>> finishedJobsCollection;
+	
+	/**
+	 * Contains the registered clients.
+	 */
+	private LinkedList<String> registeredClients;
 	
 	/**
 	 * Paused main-loop flag
@@ -82,13 +90,17 @@ public class DOPAScheduler {
 		this.submittedJobs = new RoundRobin();
 		this.curr_WorkingJob = null;
 		this.finishedJobsCollection = new HashMap<String, HashMap<String, RRJob>>();
+		this.registeredClients = new LinkedList<String>();
 	}
 	
 	/**
 	 * Connects the scheduler with the rabbitMQ system to handle all traffic from and to clientList.
 	 */
 	private void connect() {
-		this.connectionFactory = new ServerConnectionFactory( this );
+		try { this.connectionFactory = new ServerConnectionFactory( this );
+		} catch (IOException e) {
+			LOG.fatal("Cannot initialize the connections for the scheduler.");
+		}
 	}
 	
 	/**
@@ -305,12 +317,11 @@ public class DOPAScheduler {
 	private void workOnJobs(){
 		// if there is a job find out its status
 		if ( this.curr_WorkingJob != null ){
-			
 			// if this job is still in process
 			if ( this.curr_WorkingJob.finished() ) {
 				// add job to finished job list
 				this.finishedJobsCollection.get( 
-						curr_WorkingJob.getClientID() ).put( curr_WorkingJob.getJobID(), curr_WorkingJob);
+						curr_WorkingJob.getClientID() ).put( curr_WorkingJob.getJobID(), curr_WorkingJob );
 				
 				// inform client that its job finished
 				this.statusUpdate(this.curr_WorkingJob.getClientID(), this.curr_WorkingJob.getJobID());
@@ -345,8 +356,9 @@ public class DOPAScheduler {
 	 * @return true if the client got the rights, false otherwise
 	 */
 	protected boolean addClient(String clientID) {
-		if ( finishedJobsCollection.containsKey(clientID) ) return false;
+		if ( registeredClients.contains(clientID) ) return false;
 		else {
+			registeredClients.add(clientID);
 			finishedJobsCollection.put( clientID, new HashMap<String, RRJob>());
 			submittedJobs.add(clientID);
 			DOPAScheduler.LOG.info("Client '" + clientID + "' registered.");
@@ -360,11 +372,13 @@ public class DOPAScheduler {
 	 * @return true if client removed well, false otherwise
 	 */
 	protected void removeClient( String clientID ){
+		// remove the client
+		registeredClients.remove(clientID);
+		
 		// remove client and all jobs from this client from working list
 		submittedJobs.remove(clientID);
 		
-		// remove finished jobs as well
-		finishedJobsCollection.remove(clientID);
+		DOPAScheduler.LOG.info("Client '" + clientID + "' unregestered.");
 	}
 	
 	/**
@@ -431,6 +445,24 @@ public class DOPAScheduler {
 	}
 	
 	/**
+	 * Clean finished jobs collection. This delete all finished jobs from
+	 * unregistered clients.
+	 */
+	public void cleanGarbageJobsCollection(){
+		HashMap<String, HashMap<String, RRJob>> tmpFinishedJobs =
+				new HashMap<String, HashMap<String, RRJob>>();
+		
+		// save all finished jobs of registered clients
+		for ( String clientID : registeredClients ){
+			HashMap<String, RRJob> tmpJobMap = finishedJobsCollection.get(clientID);
+			tmpFinishedJobs.put(clientID, tmpJobMap);
+		}
+		
+		// delete all finished jobs of unregistered clients
+		this.finishedJobsCollection = tmpFinishedJobs;
+	}
+	
+	/**
 	 * If you want to power up the scheduler on your system it's possible to
 	 * push the priority of the scheduler thread. That's the best solution
 	 * to keep the time between two cycles (of main loop) as short as possible.
@@ -439,8 +471,8 @@ public class DOPAScheduler {
 	 */
 	public void setSchedulerPriority( int priority ){
 		if ( priority < Thread.MIN_PRIORITY ) priority = Thread.MIN_PRIORITY;
-		if ( priority > Thread.MAX_PRIORITY ) priority = Thread.MAX_PRIORITY;
-		schedulerThread.setPriority( priority );
+		else if ( priority > Thread.MAX_PRIORITY ) priority = Thread.MAX_PRIORITY;
+		else schedulerThread.setPriority( priority );
 	}
 	
 	/**
@@ -471,7 +503,7 @@ public class DOPAScheduler {
 	/**
 	 * TODO
 	 * You just have to specified the nephele configuration directory with
-	 * 		-configDir <nephele-config-directory-path>
+	 * 		--configDir <nephele-config-directory-path>
 	 * Other specifications arn't needed.
 	 * 
 	 * @param args

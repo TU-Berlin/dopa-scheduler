@@ -104,6 +104,23 @@ public class DOPAClient {
 	}
 	
 	/**
+	 * Try to reconnect the client with the scheduler services.
+	 * 
+	 * Nothing happened if this client is still connected.
+	 */
+	public void reconnect(){
+		// if the client is still connect
+		if ( this.connectionFac != null ) {
+			LOG.error( "The client is still connected. If you want to reconnect the client disconnect it first." );
+			return;
+		}
+		
+		// try to reconnect
+		try { this.connectionFac = new ClientConnectionFactory( this, true ); }
+		catch ( Exception exc ) { LOG.error("Cannot reconnect to the scheduler services!", exc); }
+	}
+	
+	/**
 	 * Try to disconnect the client. 
 	 * It do nothing if the client isn't connected yet.
 	 * 
@@ -120,6 +137,7 @@ public class DOPAClient {
 		try { 
 			this.connectionFac.shutDownConnection();
 			this.connectionFac = null;
+			LOG.info("Disconnected...");
 		} catch (IOException e) {
 			LOG.error( "Cannot close the connections or inform the scheduler: " + e.getMessage() , e);
 		}
