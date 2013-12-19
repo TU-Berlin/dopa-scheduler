@@ -26,7 +26,7 @@ Depending on whether you want to use the API in a maven project, or you just wan
   ```
   meteor-scheduler-client/target/meteor-scheduler-client-0.4-SNAPSHOT-jar-with-dependencies.jar
   ```
-  - You can now include this library in you project.
+  - You can now include this library in your project.
 
 [![Build Status](https://travis-ci.org/TU-Berlin/dopa-scheduler.png)](https://travis-ci.org/TU-Berlin/dopa-scheduler)
 
