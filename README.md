@@ -20,7 +20,7 @@ Depending on whether you want to use the API in a maven project, or you just wan
   - Then change into the meteor-scheduler-client subdirectory
   - Run the following command:
   ```
-  mvm clean assembly:single -DskipTests
+  mvn clean assembly:single -DskipTests
   ```
   - This will create the file
   ```
