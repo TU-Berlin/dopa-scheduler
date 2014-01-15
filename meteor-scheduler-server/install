@@ -1,0 +1,5 @@
+#!/bin/bash
+mvn install
+cp ./lib/* /dopa-vm/stratosphere/lib/
+cp ./bin/* /dopa-vm/stratosphere/bin/
+cp ./target/meteor-scheduler*.jar /dopa-vm/stratosphere/lib/
