@@ -66,5 +66,36 @@ public class DOPAClientTest {
         client.disconnect();
         assertTrue("Job doesn't finished with an error in 10 seconds.", expectedErrorFlag);
     }
+    
+    @Test
+    public void testQueryWaiting () {
+        DOPAClient client = DOPAClient.createNewClient("testIDSucess");
+        assertTrue("Could not connect client to scheduler", client.connect());
+        JobStateListener listener = new JobStateListener() {
+            @Override
+            public void stateChanged(DSCLJob job, JobState newStatus) {
+                System.out.println("Changed JobState " + newStatus.toString());
+            }
+        };
+
+        DSCLJob job = client.createNewJob("$students = read from 'file:///dopa-vm/test.json';"
+        		+"write $students to 'file:///dopa-vm/test_result.json';", listener);
+        
+        long start = System.currentTimeMillis();
+        boolean expectedFlag = false;
+        
+        // wait for 10.000ms = 10 seconds
+        while ( System.currentTimeMillis() - start < 10_000 ) {
+            if ( job.getStatus().equals(JobState.WAITING) ) {
+               expectedFlag = true;
+            }
+            try {Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+        client.disconnect();
+        assertTrue("Job doesn't finished with an error in 10 seconds.", expectedFlag);
+    }
 	
 }
