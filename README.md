@@ -11,7 +11,7 @@ Depending on whether you want to use the API in a maven project, or you just wan
 1. Maven build:
   - Go into the project root directory and run
   ```
-  mvm clean install -DsksipTests
+  mvn clean install -DsksipTests
   ```
   - This will install the project in your local maven repository. You can now use the artifacts within your projects.
 
@@ -27,6 +27,13 @@ Depending on whether you want to use the API in a maven project, or you just wan
   meteor-scheduler-client/target/meteor-scheduler-client-0.4-SNAPSHOT-jar-with-dependencies.jar
   ```
   - You can now include this library in your project.
+
+3. Installing the server
+  - Change into the meteor-scheduler-server subdirectory
+  - Run the following command:
+  ```
+  ./install
+  ```
 
 [![Build Status](https://travis-ci.org/TU-Berlin/dopa-scheduler.png)](https://travis-ci.org/TU-Berlin/dopa-scheduler)
 
