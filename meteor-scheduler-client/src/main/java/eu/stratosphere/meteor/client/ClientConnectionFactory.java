@@ -24,7 +24,7 @@ import eu.stratosphere.meteor.common.RequestConsumable;
  *
  * @author André Greiner-Petter
  */
-public class ClientConnectionFactory {	
+public class ClientConnectionFactory {
 	/** Unique informations about the client **/
 	private final DOPAClient client;
 	private final String charset = "UTF-8";
@@ -47,15 +47,17 @@ public class ClientConnectionFactory {
 	 * 
 	 * @param client the parent of this factory
 	 * @param reconnect true if the clients wants to reconnect to the scheduler, false otherwise
+	 * @param timeout to build the connection with the server
 	 * @throws Exception if the factory cannot initialize connections to rabbitMQ
 	 */
-	protected ClientConnectionFactory( final DOPAClient client, boolean reconnect ) throws Exception {		
+	protected ClientConnectionFactory( final DOPAClient client, boolean reconnect, int timeout ) throws Exception {		
 		this.client = client;
 		
 		DOPAClient.LOG.info("Initialize connections to RabbitMQ.");
 		
 		// build a connection
 		connectFactory = new ConnectionFactory();
+		connectFactory.setConnectionTimeout( timeout );
 		connectFactory.setHost( SchedulerConfigConstants.SCHEDULER_HOST_ADDRESS );
 		connectFactory.setPort( SchedulerConfigConstants.SCHEDULER_PORT );
 		
@@ -80,14 +82,10 @@ public class ClientConnectionFactory {
 				| ConsumerCancelledException
 				| InterruptedException e ) {
 			// handshake failed
-			Exception exc = new Exception( "The handshake with the DOPAScheduler failed." );
-			exc.setStackTrace( e.getStackTrace() );
-			throw exc;
+			throw e;
 		} catch ( IOException ioe ) {
 			// any other failed
-			Exception exc = new Exception( "IOException encountered..." );
-			exc.setStackTrace( ioe.getStackTrace() );
-			throw exc;
+			throw ioe;
 		}
 	}
 	
@@ -99,10 +97,11 @@ public class ClientConnectionFactory {
 	 * a general exception with detailed informations.
 	 * 
 	 * @param client
+	 * @param timeout
 	 * @throws Exception
 	 */
-	protected ClientConnectionFactory( final DOPAClient client ) throws Exception{
-		this ( client, false );
+	protected ClientConnectionFactory( final DOPAClient client, int timeout ) throws Exception{
+		this ( client, false, timeout );
 	}
 	
 	/**

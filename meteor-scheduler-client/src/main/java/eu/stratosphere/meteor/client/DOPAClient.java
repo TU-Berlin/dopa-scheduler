@@ -59,6 +59,11 @@ public class DOPAClient {
 	private HashMap<String, DSCLJob> jobs;
 	
 	/**
+	 * The timeout time to connect with the scheduler system
+	 */
+	private int timeout = 5_000;
+	
+	/**
 	 * Constructs a new client object. This client isn't connected
 	 * to scheduler yet.
 	 * @param ID final unique identifier
@@ -86,6 +91,15 @@ public class DOPAClient {
 	}
 	
 	/**
+	 * Sets a new timeout for connection setups
+	 * @param newTimeOut
+	 */
+	public void setTimeOut( int newTimeOut ){
+		LOG.info("Sets the timeout from " + timeout + "ms to " + newTimeOut + "ms.");
+		this.timeout = newTimeOut;
+	}
+	
+	/**
 	 * Try to connect the client with the scheduler services.
 	 * If this failed for any reason you can try it again.
 	 * 
@@ -103,11 +117,11 @@ public class DOPAClient {
 		
 		// else try to connect it
 		try {
-            this.connectionFac = new ClientConnectionFactory( this );
+            this.connectionFac = new ClientConnectionFactory( this, timeout );
             return true;
         }
 		catch ( Exception exc ) {
-            LOG.error( "Cannot connected to the scheduler services!", exc );
+            LOG.error( "Cannot connected to the scheduler services!" + System.lineSeparator(), exc );
         }
         return false;
 	}
@@ -133,7 +147,7 @@ public class DOPAClient {
 		}
 		
 		// try to reconnect
-		try { this.connectionFac = new ClientConnectionFactory( this, true );
+		try { this.connectionFac = new ClientConnectionFactory( this, true, timeout );
             return true;
         }
 		catch ( Exception exc ) {
@@ -284,5 +298,7 @@ public class DOPAClient {
 	public static void main( String[] args ) {
 		DOPAClient client = createNewClient( "Max Mustermann" );
 		client.connect();
+		client.createNewJob("$students = read from 'file:///dopa-vm/test.json';" +
+			"write $students to 'file:///dopa-vm/test_result.json'");
 	}
 }

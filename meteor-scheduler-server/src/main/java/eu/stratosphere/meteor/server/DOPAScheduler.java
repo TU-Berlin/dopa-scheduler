@@ -270,8 +270,9 @@ public class DOPAScheduler {
 			return;
 		}
 		
+		// otherwise start parallel thread to sending blocks of the result
 		FileSender sender = new FileSender( this.connectionFactory, job, delivery );
-		sender.run();
+		sender.start();
 	}
 	
 	/**

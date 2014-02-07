@@ -19,6 +19,10 @@ public class JobExecutor extends Thread {
 	private String meteorScript;
 	private ClientFrontend client;
 	
+	/**
+	 * 
+	 * @param job
+	 */
 	protected JobExecutor( RRJob job ) {
 		this.job = job;
 		this.meteorScript = job.getMeteorScript();
