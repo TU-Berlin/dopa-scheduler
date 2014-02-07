@@ -298,7 +298,5 @@ public class DOPAClient {
 	public static void main( String[] args ) {
 		DOPAClient client = createNewClient( "Max Mustermann" );
 		client.connect();
-		client.createNewJob("$students = read from 'file:///dopa-vm/test.json';" +
-			"write $students to 'file:///dopa-vm/test_result.json'");
 	}
 }
