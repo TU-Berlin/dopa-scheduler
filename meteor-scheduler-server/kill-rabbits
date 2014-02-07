@@ -1,0 +1,2 @@
+#bin/bash
+sudo /usr/sbin/rabbitmqctl stop_app && sudo /usr/sbin/rabbitmqctl reset && sudo /usr/sbin/rabbitmqctl start_app
