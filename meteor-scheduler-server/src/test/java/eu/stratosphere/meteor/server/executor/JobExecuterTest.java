@@ -43,7 +43,7 @@ public class JobExecuterTest {
 	@BeforeClass
 	public static void setup(){
 		SchedulerConfigConstants.EXECUTER_CONFIG = new String[]{
-			"--configDir", ""// TODO	
+			"--configDir", ""// TODO
 		};
 	}
 	
@@ -59,7 +59,7 @@ public class JobExecuterTest {
 	
 	@Test ( timeout = THRESHOLD )
 	public void submitTest(){
-		//new JobExecutor( jobClean ).run();
-		//assertEquals ( jobClean.getStatus(), JobState.FINISHED );
+		new JobExecutor( jobClean ).run();
+		assertEquals ( jobClean.getStatus(), JobState.FINISHED );
 	}
 }

@@ -22,7 +22,7 @@
 	<artifactId>meteor-scheduler</artifactId>
 	<name>meteor-scheduler</name>
 	<groupId>eu.stratosphere</groupId>
-	<version>0.4-SNAPSHOT</version>
+	<version>0.5-hadoop2-SNAPSHOT</version>
 
 	<dependencies>
 		<dependency>
