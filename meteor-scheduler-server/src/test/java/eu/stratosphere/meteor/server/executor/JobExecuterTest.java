@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 
 import java.util.Date;
 
+import org.junit.Ignore;
 import org.junit.Test;
 
 import eu.stratosphere.meteor.common.JobState;
@@ -44,6 +45,7 @@ public class JobExecuterTest {
 	}
 	
 	@Test ( timeout = THRESHOLD )
+	@Ignore ( "Just an integration test." )
 	public void submitTest(){
 		new JobExecutor( jobClean ).run();
 		assertEquals ( "The job failed with information: " + jobClean.getErrorJSON(), JobState.FINISHED, jobClean.getStatus() );
