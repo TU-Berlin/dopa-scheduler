@@ -92,7 +92,7 @@ public final class SchedulerConfigConstants {
 	/**
 	 * The default configuration to submitting a job.
 	 */
-	public static String[] EXECUTER_CONFIG = new String[]{ "--configDir", "../conf", "--updateTime", "1000", "--wait" };
+	public static String[] EXECUTER_CONFIG = new String[]{ "--configDir", "/dopa-vm/stratosphere/conf", "--updateTime", "1000", "--wait" };
 	
 	/**
 	 * Generate a key by given queueName. This method warrant consistency.
