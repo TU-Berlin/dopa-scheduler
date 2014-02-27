@@ -137,35 +137,37 @@ public class DOPAClientTest {
         // reach this line means the test finished well
     }
     
-    @Test
-    public void testQueryWaiting () {
+    private static boolean waited = false;
+    private static boolean running = false;
+    private static boolean finished = false;
+    
+    @Test ( timeout = THRESHOLD )
+    public void testQuerySubmision () {
         DOPAClient client = DOPAClient.createNewClient("testIDSucess");
         assertTrue("Could not connect client to scheduler", client.connect());
+        
         JobStateListener listener = new JobStateListener() {
             @Override
             public void stateChanged(DSCLJob job, JobState newStatus) {
-                System.out.println("Changed JobState " + newStatus.toString());
+                if ( newStatus.equals( JobState.WAITING ) ) waited = true;
+                else if ( newStatus.equals( JobState.RUNNING ) ) running = true;
+                else if ( newStatus.equals( JobState.FINISHED ) ) finished = true;
             }
         };
 
-        DSCLJob job = client.createNewJob("$students = read from 'file:///dopa-vm/test.json';"
+        @SuppressWarnings("unused")
+		DSCLJob job = client.createNewJob("$students = read from 'file:///dopa-vm/test.json';"
         		+"write $students to 'file:///dopa-vm/test_result.json';", listener);
         
-        long start = System.currentTimeMillis();
-        boolean expectedFlag = false;
-        
-        // wait for 10.000ms = 10 seconds
-        while ( System.currentTimeMillis() - start < 10_000 ) {
-            if ( job.getStatus().equals(JobState.WAITING) ) {
-               expectedFlag = true;
-            }
-            try {Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
+        while ( !finished ) {
+        	try {Thread.sleep(100);}
+        	catch(InterruptedException ie){ie.printStackTrace();}
         }
+        
         client.disconnect();
-        assertTrue("Job doesn't finished with an error in 10 seconds.", expectedFlag);
+        assertTrue("Client doesn't waited to submit the job!", waited);
+        assertTrue("The job doesn't runs on the scheduler.", running);
+        assertTrue("The job doesn't finished correctly.", finished);
     }
 	
 }

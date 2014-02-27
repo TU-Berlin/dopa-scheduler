@@ -19,16 +19,19 @@ import eu.stratosphere.meteor.server.executor.RRJob;
  */
 public class JobExecuterTest {
 	/**
-	 * The time threshold for tests in milli seconds
+	 * The time threshold for tests in milliseconds
 	 */
 	private static final long THRESHOLD = 10_000;
 	
+	/**
+	 * The test script should work fine on local machine with test.json in /dopa-vm/
+	 */
 	private static final String script = 
 			"$students = read from 'file:///dopa-vm/test.json';" +
 			"write $students to 'file:///dopa-vm/test_result.json';";
 	
 	/**
-	 * The test jobs
+	 * Creates test job objects.
 	 */
 	private static final Date now = new Date();
 	private static RRJob jobFailure = new RRJob("c001", "j001", "ProvokeError", now );
