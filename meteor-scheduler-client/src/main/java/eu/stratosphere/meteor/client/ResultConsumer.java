@@ -78,7 +78,8 @@ public class ResultConsumer extends QueueingConsumer implements RequestConsumabl
 				JSONObject obj = new JSONObject( jsonString );
 				
 				// if an error message received cancel this consumer
-				if ( MessageBuilder.getJobStatus(obj).equals( JobState.ERROR ) ){
+				if ( 	MessageBuilder.getJobStatus(obj) != null &&
+						MessageBuilder.getJobStatus(obj).equals( JobState.ERROR ) ){
 					DOPAClient.LOG.warn("The scheduler send an error message: " + MessageBuilder.getErrorMessage(obj));
 					super.getChannel().basicAck(deliveryTag, false);
 					super.getChannel().basicCancel(consumerTag);
@@ -98,6 +99,7 @@ public class ResultConsumer extends QueueingConsumer implements RequestConsumabl
 		
 		// else incoming delivery is a file block.
 		try{
+			DOPAClient.LOG.info("Received new block of the requested result.");
 			// create block from incoming message
 			ResultFileBlock block = new ResultFileBlock( body, properties.getContentEncoding(), blockIdx++, blockSize, maxBlockNumbers );
 			

@@ -38,8 +38,6 @@ public class ResultFileBlock {
 		
 		this.block = new byte[blockSize];
         System.arraycopy(block, 0, this.block, 0, block.length);
-
-		System.out.println( stringRepresentation );
 	}
 
 	/**
@@ -70,6 +68,7 @@ public class ResultFileBlock {
 	}
 
 	/**
+	 * Return the index of this block
 	 * @return the blockIdx
 	 */
 	public int getBlockIndex() {
@@ -77,6 +76,7 @@ public class ResultFileBlock {
 	}
 
 	/**
+	 * Return the current size of this block
 	 * @return the blockSize
 	 */
 	public int getBlockSize() {
@@ -96,6 +96,4 @@ public class ResultFileBlock {
 	public String getStringRepresentation() {
 		return stringRepresentation;
 	}
-	
-	
 }

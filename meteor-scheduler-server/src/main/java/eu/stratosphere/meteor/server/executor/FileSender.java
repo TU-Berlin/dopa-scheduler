@@ -142,15 +142,21 @@ public class FileSender extends Thread {
 		String path = null;
 		FileStatus fileStatus = null;
 		
+		String result = job.getResult(fileIndex);
+		if ( result == null ) {
+			DOPAScheduler.LOG.error("No result found for specified index: " + fileIndex);
+			throw new NullPointerException("No result found for specified index: " + fileIndex);
+		}
+		
 		// test whether the link is a local file. In this case we have to use a quite other method
-		Matcher matcher = localPattern.matcher( job.getResult(fileIndex) );
+		Matcher matcher = localPattern.matcher( result );
 		if ( matcher.find() ){
 			this.runLocal( matcher.group(1) );
 			return;
 		}
 		
 		// get hdfs paths
-		matcher = hdfsPattern.matcher( job.getResult(fileIndex) );
+		matcher = hdfsPattern.matcher( result );
 		if ( matcher.find() ) {
 			host = matcher.group(1);
 			path = matcher.group(2);
@@ -164,6 +170,7 @@ public class FileSender extends Thread {
 			}
 			catch ( Exception e ){ 
 				DOPAScheduler.LOG.error("Cannot get the file to send results back to the client.", e); 
+				throw new IllegalArgumentException(e.getMessage(), e);
 			}
 		}
 		
@@ -178,7 +185,7 @@ public class FileSender extends Thread {
 		try { this.sendSpecifications(); }
 		catch (IllegalArgumentException | IOException e) {
 			DOPAScheduler.LOG.error("Cannot send informations about the following blocks to the client.", e);
-			return;
+			throw new IllegalArgumentException("Cannot send informations about the following blocks to the client.", e);
 		}
 		
 		// after send the informations of blocks, send the blocks itself
@@ -197,8 +204,10 @@ public class FileSender extends Thread {
 			} // finally closed channels
 		} catch ( IllegalArgumentException iae ){
 			DOPAScheduler.LOG.error("Cannot send with this properties.", iae);
+			throw new IllegalArgumentException("Cannot send with this properties.", iae);
 		} catch ( IOException ioe ){
 			DOPAScheduler.LOG.error("Cannod send blocks of result file.", ioe);
+			throw new IllegalArgumentException("Cannod send blocks of result file.", ioe);
 		}
 	}
 	
@@ -211,7 +220,7 @@ public class FileSender extends Thread {
 		File file = new File( path );
 		if ( file.isDirectory() || !file.exists() ){
 			DOPAScheduler.LOG.error("Given file is not a directory or doesn't exists: " + path);
-			return;
+			throw new IllegalArgumentException("Given file is not a directory or doesn't exists: " + path);
 		}
 		
 		// calculate block size or change 
@@ -223,7 +232,7 @@ public class FileSender extends Thread {
 		try { this.sendSpecifications(); }
 		catch (IllegalArgumentException | IOException e) {
 			DOPAScheduler.LOG.error("Cannot send informations about the following blocks to the client.", e);
-			return;
+			throw new IllegalArgumentException("Cannot send informations about the following blocks to the client.", e);
 		}
 		
 		// open streams, read and send input
@@ -241,6 +250,7 @@ public class FileSender extends Thread {
 			}
 		} catch ( IOException ioe ){
 			DOPAScheduler.LOG.error( "Cannot read from local file. A streaming error occurred.", ioe);
+			throw new IllegalArgumentException( "Cannot read from local file. A streaming error occurred.", ioe);
 		}
 	}
 	

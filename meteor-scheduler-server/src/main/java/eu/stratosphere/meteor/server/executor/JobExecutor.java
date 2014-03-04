@@ -34,7 +34,6 @@ public class JobExecutor extends Thread {
 		try {
 			client.execute( meteorScript );
 			job.setStatus( JobState.FINISHED );
-			job.setOutputStrings( client.getOutputPaths() );
 		} catch (QueryParserException e) {
 			job.setErrorMessage( "Cannot parse the meteor script of your job. " + e.getMessage() );
 			job.setStatus( JobState.ERROR );

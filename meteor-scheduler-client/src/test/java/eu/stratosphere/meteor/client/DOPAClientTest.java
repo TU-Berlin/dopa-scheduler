@@ -9,8 +9,12 @@ import java.io.IOException;
 import eu.stratosphere.meteor.common.DSCLJob;
 import eu.stratosphere.meteor.common.JobState;
 import eu.stratosphere.meteor.common.JobStateListener;
+import eu.stratosphere.meteor.common.ResultFileBlock;
+import eu.stratosphere.meteor.common.ResultFileHandler;
 import eu.stratosphere.meteor.common.SchedulerConfigConstants;
 
+import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import com.rabbitmq.client.Connection;
@@ -137,15 +141,49 @@ public class DOPAClientTest {
         // reach this line means the test finished well
     }
     
+    /**
+     * A correct job query on special systems
+     */
+    private final static String integrationQuery = 
+    		"$students = read from 'file:///dopa-vm/test.json';\n"+
+    		"write $students to 'file:///dopa-vm/test_result.json';";
+    
+    /**
+     * Flags to specify status of submitted job
+     */
     private static boolean waited = false;
     private static boolean running = false;
     private static boolean finished = false;
     
+    private static int blockIdx = 0;
+    private static long totalAmountOfBlocks = 1L;
+    
+    /**
+     * Resets the status flags before each job
+     */
+    @Before
+    public void reset(){
+    	// back to default values
+        waited = false;
+        running = false;
+        finished = false;
+        
+        blockIdx = 0;
+        totalAmountOfBlocks = 1L;
+    }
+    
+    /**
+     * Test to submit a correct job
+     * - it's an integration test -
+     */
+    @Ignore
     @Test ( timeout = THRESHOLD )
     public void testQuerySubmision () {
-        DOPAClient client = DOPAClient.createNewClient("testIDSucess");
+        // create client
+    	DOPAClient client = DOPAClient.createNewClient("testIDSucess");
         assertTrue("Could not connect client to scheduler", client.connect());
         
+        // implement a listener to observer the status changes
         JobStateListener listener = new JobStateListener() {
             @Override
             public void stateChanged(DSCLJob job, JobState newStatus) {
@@ -154,20 +192,71 @@ public class DOPAClientTest {
                 else if ( newStatus.equals( JobState.FINISHED ) ) finished = true;
             }
         };
-
-        @SuppressWarnings("unused")
-		DSCLJob job = client.createNewJob("$students = read from 'file:///dopa-vm/test.json';"
-        		+"write $students to 'file:///dopa-vm/test_result.json';", listener);
         
+        // submit a new job with integration path
+        @SuppressWarnings("unused")
+		DSCLJob job = client.createNewJob(integrationQuery, listener);
+        
+        // wait until this job finished
         while ( !finished ) {
         	try {Thread.sleep(100);}
         	catch(InterruptedException ie){ie.printStackTrace();}
         }
         
+        // if it finished, disconnect and test states
         client.disconnect();
         assertTrue("Client doesn't waited to submit the job!", waited);
         assertTrue("The job doesn't runs on the scheduler.", running);
         assertTrue("The job doesn't finished correctly.", finished);
     }
 	
+    /**
+     * This test submit a correct job on special systems and ask for the
+     * result. Whether this job finished in a correct test is tested by 
+     * 'testQuerySubmission'!
+     * - it's an integration test -
+     */
+    @Ignore
+    @Test ( timeout = THRESHOLD*2 ) // double timeout
+    public void testResultRequest(){
+    	// initialize
+    	DOPAClient client = DOPAClient.createNewClient("ResultClient");
+    	client.connect();
+    	
+    	JobStateListener stateListener = new JobStateListener() {
+			@Override
+			public void stateChanged(DSCLJob job, JobState newStatus) {
+				if ( newStatus.equals( JobState.FINISHED ) || newStatus.equals( JobState.ERROR) ) 
+					finished = true;
+			}
+    	};
+    	
+    	// submit the new job
+    	DSCLJob job = client.createNewJob(integrationQuery, stateListener);
+    	
+    	// wait until this job finished
+    	while ( !finished ){
+    		try { Thread.sleep(100); }
+    		catch ( InterruptedException ie ){ fail("Job doesn't reached the status FINISHED. Current thread interrupted."); }
+    	}
+    	
+    	// create a result listener
+    	ResultFileHandler resultListner = new ResultFileHandler() {
+    		@Override
+			public void handleFileBlock(DSCLJob job, ResultFileBlock block) {
+				blockIdx = block.getBlockIndex();
+				totalAmountOfBlocks = block.getTotalNumberOfBlocks();
+				System.out.println("New block (Idx:" + block.getBlockIndex() + ") of job " + job.getID() + "incoming:");
+				System.out.println(block.getStringRepresentation());
+				System.out.println();
+			}
+    	};
+    	
+    	job.requestResult(0, 1024, Integer.MAX_VALUE, resultListner);
+    	
+    	while ( blockIdx < totalAmountOfBlocks ){
+    		try { Thread.sleep(100); }
+    		catch ( InterruptedException ie ){ fail("Job doesn't reached the end of result file. Current thread interrupted."); }
+    	}
+    }
 }

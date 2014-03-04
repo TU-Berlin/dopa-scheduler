@@ -3,6 +3,8 @@ package eu.stratosphere.meteor.server.executor;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.json.JSONObject;
 
@@ -45,7 +47,7 @@ public class RRJob {
 	/**
 	 * Internal informations about script and results (just links)
 	 */
-	private String script;
+	private String mappedScript;
 	private List<String> result;
 	
 	/**
@@ -58,6 +60,10 @@ public class RRJob {
 	 */
 	private final JobExecutor executor;
 	
+	private final Pattern pathPattern = Pattern.compile(
+			"(write|read)\\s+(\\$\\w+\\s+to|from)\\s+'\\s*(file:///[^']+|hdfs://[^']+)'\\s*;"
+			);
+	
 	/**
 	 * Creates an RoundRobinJob object
 	 * @param clientID from the client submitted this job
@@ -69,19 +75,38 @@ public class RRJob {
 		this.clientID = clientID;
 		this.jobID = jobID;
 		this.status= JobState.WAITING;
-		this.script = meteorScript;
 		this.frontend = new ClientFrontend( SchedulerConfigConstants.EXECUTER_CONFIG );
 		this.submitTime = submitTime;
 		this.result = new ArrayList<String>();
 		this.errorJSON = new JSONObject();
 		this.executor = new JobExecutor( this );
+		this.mappingScript( meteorScript );
+	}
+	
+	// TODO mapping output and input paths of query
+	
+	private void mappingScript( String meteorScript ){
+		Matcher matcher = pathPattern.matcher(meteorScript);
+		
+		ArrayList<String> outputPaths = new ArrayList<String>();
+		
+		while ( matcher.find() ){
+			if ( matcher.group(1).matches("write") ){
+				// TODO mapping this path!
+				outputPaths.add( matcher.group(3) );
+			} else if ( matcher.group(1).matches("read") ) {
+				// TODO
+			}
+		}
+		
+		setOutputStrings( outputPaths );
 	}
 	
 	/**
 	 * Sets the output links.
 	 * @param outputs
 	 */
-	protected void setOutputStrings( List<String> outputs ){
+	private void setOutputStrings( List<String> outputs ){
 		this.result = outputs;
 	}
 	
@@ -115,7 +140,7 @@ public class RRJob {
 	 * @return meteorScript
 	 */
 	protected String getMeteorScript(){
-		return this.script;
+		return this.mappedScript;
 	}
 	
 	/**
@@ -193,6 +218,4 @@ public class RRJob {
 	public String toString(){		
 		return "RoundRobinJob from Client " + clientID + " with job ID " + jobID + ". Current Status: " + status;
 	}
-	
-	
 }

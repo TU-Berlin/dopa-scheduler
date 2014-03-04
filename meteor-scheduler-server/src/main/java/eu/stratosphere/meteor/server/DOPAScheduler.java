@@ -132,7 +132,8 @@ public class DOPAScheduler {
 			
 			// put to existing list or create once
 			submittedJobs.add(clientID, job);
-			finishedJobsCollection.put(clientID, new HashMap<String, RRJob>());
+			if ( !finishedJobsCollection.containsKey(clientID) )
+				finishedJobsCollection.put(clientID, new HashMap<String, RRJob>());
 			
 			// send new job status to client
 			statusUpdate( clientID, jobID );
@@ -190,6 +191,7 @@ public class DOPAScheduler {
 	 * @param jobID specified job
 	 */
 	private void statusUpdate( String clientID, String jobID ){
+		LOG.info("Status update for client " + clientID + " of job " + jobID + ".");
 		//get the specified RRjob from the workingJobsCollection by the ClientID and the JobID
 		RRJob job = submittedJobs.get(clientID, jobID);
 		if ( job == null ) job = getFinishedJob( clientID, jobID );
@@ -215,6 +217,7 @@ public class DOPAScheduler {
 	 * @param properties from request
 	 */
 	private void replyLink( String clientID, String jobID, JSONObject request, BasicProperties properties ){
+		LOG.info("Reply a link request from client " + clientID + " for the job " + jobID + ".");
 		//get the specified RRjob from the workingJobsCollection by the ClientID and the JobID
 		RRJob job = getFinishedJob( clientID, jobID );
 		
@@ -260,6 +263,8 @@ public class DOPAScheduler {
 	 * @param delivery request from the client
 	 */
 	private void sendResult( String clientID, String jobID, Delivery delivery ){
+		LOG.info("Reply a result request from client " + clientID + " for the job " + jobID + ".");
+		
 		RRJob job = this.getFinishedJob(clientID, jobID);
 		if ( job == null ) {
 			String errorMsg = "Your specified job with the ID: '"+jobID+"' ";
@@ -267,12 +272,18 @@ public class DOPAScheduler {
 				errorMsg += "doesn't finished yet. You cannot ask for the result at this stage.";
 			else errorMsg += "doesn't exists on the server.";
 			sendErrorMessage( delivery.getProperties(), clientID, jobID, errorMsg );
+			LOG.info("Doesn't send the message because of: " + errorMsg);
 			return;
 		}
 		
 		// otherwise start parallel thread to sending blocks of the result
 		FileSender sender = new FileSender( this.connectionFactory, job, delivery );
-		sender.start();
+		try { sender.start(); }
+		catch ( Exception e ){
+			String errorMsg = "Cannot send the result back to you cause: " + System.lineSeparator();
+			errorMsg += e.getMessage();
+			sendErrorMessage( delivery.getProperties(), clientID, jobID, errorMsg );
+		}
 	}
 	
 	/**
