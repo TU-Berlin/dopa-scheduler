@@ -142,7 +142,7 @@ public class FileSender extends Thread {
 		String path = null;
 		FileStatus fileStatus = null;
 		
-		String result = job.getResult(fileIndex);
+		String result = job.getMappedResult(fileIndex);
 		if ( result == null ) {
 			DOPAScheduler.LOG.error("No result found for specified index: " + fileIndex);
 			throw new NullPointerException("No result found for specified index: " + fileIndex);

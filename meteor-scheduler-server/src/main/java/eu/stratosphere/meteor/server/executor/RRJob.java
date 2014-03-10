@@ -12,6 +12,7 @@ import eu.stratosphere.meteor.common.SchedulerConfigConstants;
 import eu.stratosphere.meteor.client.ClientFrontend;
 import eu.stratosphere.meteor.common.JobState;
 import eu.stratosphere.meteor.common.MessageBuilder;
+import eu.stratosphere.meteor.server.DOPAScheduler;
 
 /**
  * This class represents a job on the server site of the DOPAScheduler system.
@@ -48,7 +49,8 @@ public class RRJob {
 	 * Internal informations about script and results (just links)
 	 */
 	private String mappedScript;
-	private List<String> result;
+	private List<String> mappedResult;
+	private List<String> originalResult;
 	
 	/**
 	 * Save the time this job submitted from the client
@@ -60,8 +62,11 @@ public class RRJob {
 	 */
 	private final JobExecutor executor;
 	
+	/**
+	 * The Pattern to find paths
+	 */
 	private final Pattern pathPattern = Pattern.compile(
-			"(write|read)\\s+(\\$\\w+\\s+to|from)\\s+'\\s*(file:///[^']+|hdfs://[^']+)'\\s*;"
+			"(write|read)\\s+(\\$\\w+\\s+to|from)\\s+'\\s*(/?[^']+\\.json)'\\s*;"
 			);
 	
 	/**
@@ -77,37 +82,72 @@ public class RRJob {
 		this.status= JobState.WAITING;
 		this.frontend = new ClientFrontend( SchedulerConfigConstants.EXECUTER_CONFIG );
 		this.submitTime = submitTime;
-		this.result = new ArrayList<String>();
+		this.mappedResult = new ArrayList<String>();
 		this.errorJSON = new JSONObject();
 		this.executor = new JobExecutor( this );
-		this.mappingScript( meteorScript );
-	}
-	
-	// TODO mapping output and input paths of query
-	
-	private void mappingScript( String meteorScript ){
-		Matcher matcher = pathPattern.matcher(meteorScript);
-		
-		ArrayList<String> outputPaths = new ArrayList<String>();
-		
-		while ( matcher.find() ){
-			if ( matcher.group(1).matches("write") ){
-				// TODO mapping this path!
-				outputPaths.add( matcher.group(3) );
-			} else if ( matcher.group(1).matches("read") ) {
-				// TODO
-			}
-		}
-		
-		setOutputStrings( outputPaths );
+		this.mappedScript = this.mappingScript( meteorScript );
+		DOPAScheduler.LOG.info("Mapped meteor script to: " + this.mappedScript);
 	}
 	
 	/**
-	 * Sets the output links.
+	 * Maps paths from the meteor script to the local or the hdfs file system.
+	 * Returns the mapped meteor script.
+	 * @param meteorScript with paths
+	 * @return the meteor script with mapped paths
+	 */
+	private String mappingScript( String script ){
+		String meteorScript = script;
+		
+		// search for paths
+		Matcher matcher = pathPattern.matcher(meteorScript);
+		
+		ArrayList<String> mappedOutputPaths = new ArrayList<String>();
+		ArrayList<String> origOutputPaths = new ArrayList<String>();
+		
+		// while there are old paths in the meteor script
+		while ( matcher.find() ){
+			// if there is a path (group 3)
+			if ( matcher.group(3) != null ){
+				// map this path to the new one
+				String tmpPath = SchedulerConfigConstants.SCHEDULER_FILESYSTEM_ROOT_PATH + this.clientID;
+				
+				// adding path separator
+				if ( matcher.group(3).startsWith("/") ) tmpPath += matcher.group(3);
+				else tmpPath += "/" + matcher.group(3);
+				
+				// replace old paths by new
+				meteorScript = meteorScript.replace( matcher.group(3), tmpPath);
+				
+				// if this path was also a result path, save it
+				if ( matcher.group(1).matches("write") ){
+					origOutputPaths.add( matcher.group(3) );
+					mappedOutputPaths.add( tmpPath );
+				}
+			}
+		}
+		
+		// save result paths
+		setMappedOutputStrings( mappedOutputPaths );
+		setOriginalOutputStrings( origOutputPaths );
+		
+		// return mapped meteor script
+		return meteorScript;
+	}
+	
+	/**
+	 * Sets the mapped output links.
 	 * @param outputs
 	 */
-	private void setOutputStrings( List<String> outputs ){
-		this.result = outputs;
+	private void setMappedOutputStrings( List<String> outputs ){
+		this.mappedResult = outputs;
+	}
+	
+	/**
+	 * Sets the original output links.
+	 * @param outputs
+	 */
+	private void setOriginalOutputStrings( List<String> outputs ){
+		this.originalResult = outputs;
 	}
 	
 	/**
@@ -185,13 +225,23 @@ public class RRJob {
 	}
 	
 	/**
-	 * Returns the result path of specified index
+	 * Returns the mapped result path of specified index
 	 * @param index
-	 * @return path of result (null if this result doesn't exists)
+	 * @return path of mapped result (null if this result doesn't exists)
 	 */
-	public String getResult( int index ){
-		if ( index < 0 || index >= this.result.size() ) return null;
-		return this.result.get(index);
+	public String getMappedResult( int index ){
+		if ( index < 0 || index >= this.mappedResult.size() ) return null;
+		return this.mappedResult.get(index);
+	}
+	
+	/**
+	 * Returns the original result path of specified index
+	 * @param index
+	 * @return path of the original result (null if this index doesn't exists)
+	 */
+	public String getOriginalResult( int index ){
+		if ( index < 0 || index >= this.originalResult.size() ) return null;
+		return this.originalResult.get(index);
 	}
 	
 	/**

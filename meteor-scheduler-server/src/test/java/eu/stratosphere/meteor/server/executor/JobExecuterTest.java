@@ -27,8 +27,8 @@ public class JobExecuterTest {
 	 * The test script should work fine on local machine with test.json in /dopa-vm/
 	 */
 	private static final String script = 
-			"$students = read from 'file:///dopa-vm/test.json';" +
-			"write $students to 'file:///dopa-vm/test_result.json';";
+			"$students = read from '/test.json';" +
+			"write $students to '/test_result.json';";
 	
 	/**
 	 * Creates test job objects.

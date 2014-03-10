@@ -6,19 +6,19 @@ import static org.junit.Assert.fail;
 
 import java.io.IOException;
 
-import eu.stratosphere.meteor.common.DSCLJob;
-import eu.stratosphere.meteor.common.JobState;
-import eu.stratosphere.meteor.common.JobStateListener;
-import eu.stratosphere.meteor.common.ResultFileBlock;
-import eu.stratosphere.meteor.common.ResultFileHandler;
-import eu.stratosphere.meteor.common.SchedulerConfigConstants;
-
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
+
+import eu.stratosphere.meteor.common.DSCLJob;
+import eu.stratosphere.meteor.common.JobState;
+import eu.stratosphere.meteor.common.JobStateListener;
+import eu.stratosphere.meteor.common.ResultFileBlock;
+import eu.stratosphere.meteor.common.ResultFileHandler;
+import eu.stratosphere.meteor.common.SchedulerConfigConstants;
 
 /**
  * For these tests, it's required to got a running DOPAScheduler system 
@@ -145,8 +145,8 @@ public class DOPAClientTest {
      * A correct job query on special systems
      */
     private final static String integrationQuery = 
-    		"$students = read from 'file:///dopa-vm/test.json';\n"+
-    		"write $students to 'file:///dopa-vm/test_result.json';";
+    		"$students = read from '/test.json';\n"+
+    		"write $students to '/test_result.json';";
     
     /**
      * Flags to specify status of submitted job

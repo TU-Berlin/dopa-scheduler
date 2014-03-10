@@ -27,6 +27,12 @@ public final class SchedulerConfigConstants {
 	public static final int SCHEDULER_RECONNECT_PRIORITY = 10;
 	
 	/**
+	 * This is the root path to the file system. It should be start with 'file:///' or 'hdfs://' 
+	 * and it should end with a line separator.
+	 */
+	public static final String SCHEDULER_FILESYSTEM_ROOT_PATH = "file:///dopa-vm/testPath/";
+	
+	/**
 	 * The exchange name to handle requests from clients.
 	 */
 	public static final String REQUEST_EXCHANGE = "dopa.scheduler.exchange.request";

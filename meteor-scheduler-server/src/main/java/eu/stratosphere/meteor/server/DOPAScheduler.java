@@ -35,7 +35,6 @@ import eu.stratosphere.meteor.server.executor.RoundRobin;
  *         Etienne Rolly
  */
 public class DOPAScheduler {
-    public static int RABBIT_MQ_NOT_STARTED_EXIT_CODE = 2;
 	/**
 	 * Log for server site.
 	 */
@@ -101,8 +100,6 @@ public class DOPAScheduler {
 		try { this.connectionFactory = new ServerConnectionFactory( this );
 		} catch (IOException e) {
 			LOG.fatal("Cannot initialize the connections for the scheduler.");
-            System.exit(RABBIT_MQ_NOT_STARTED_EXIT_CODE);
-
 		}
 	}
 	
@@ -227,7 +224,7 @@ public class DOPAScheduler {
 		// build reply
 		JSONObject reply = MessageBuilder.buildGetLink(clientID, jobID, idx);
 		
-		if ( job != null ) reply = MessageBuilder.addPath( reply, job.getResult(idx) );
+		if ( job != null ) reply = MessageBuilder.addPath( reply, job.getOriginalResult(idx) );
 		else reply = MessageBuilder.buildErrorStatus(
 				clientID, jobID,
 				"The job with the ID: '" + jobID + "' doesn't finished yet or exists anymore. "
