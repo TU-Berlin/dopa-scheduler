@@ -176,7 +176,7 @@ public class DOPAClientTest {
      * Test to submit a correct job
      * - it's an integration test -
      */
-    //@Ignore
+    @Ignore
     @Test ( timeout = THRESHOLD )
     public void testQuerySubmision () {
         // create client
@@ -216,7 +216,7 @@ public class DOPAClientTest {
      * 'testQuerySubmission'!
      * - it's an integration test -
      */
-    //@Ignore
+    @Ignore
     @Test ( timeout = THRESHOLD*2 ) // double timeout
     public void testResultRequest(){
     	// initialize

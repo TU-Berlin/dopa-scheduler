@@ -28,21 +28,21 @@ public class SchedulerTest {
 	@BeforeClass
 	@Ignore
 	public static void start(){
-		scheduler.start();
+		//scheduler.start(); // this start the scheduler system
 	}
 	
 	@AfterClass
 	@Ignore
 	public static void stop(){
-		try { scheduler.shutdown();
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
+		//try { scheduler.shutdown();
+		//} catch (IOException e) {
+		//	e.printStackTrace();
+		//}
 	}
 	
 	@Test
 	@Ignore
 	public void multipleClientTest(){
-		scheduler.addClient("ben");
+		//scheduler.addClient("ben");
 	}
 }
