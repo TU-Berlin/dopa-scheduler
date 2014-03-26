@@ -99,11 +99,6 @@ public final class SchedulerConfigConstants {
 	public static final int MAX_BLOCK_SIZE = 100 * 1024 * 1024;
 	
 	/**
-	 * The default configuration to submitting a job.
-	 */
-	public static String[] EXECUTER_CONFIG = new String[]{ "--configDir", "/dopa-vm/stratosphere-0.5-hadoop2-SNAPSHOT/conf", "--updateTime", "1000", "--wait" };
-	
-	/**
 	 * Generate a key by given queueName. This method warrant consistency.
 	 * @param clientName given name of a queue
 	 * @return the unique key for this queue

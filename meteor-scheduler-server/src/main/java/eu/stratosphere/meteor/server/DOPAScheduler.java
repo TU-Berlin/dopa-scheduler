@@ -49,6 +49,13 @@ public class DOPAScheduler {
 	public static final Log LOG = LogFactory.getLog( DOPAScheduler.class );
 	
 	/**
+	 * The default configuration directory for the executor
+	 */
+	public static String[] EXECUTER_CONFIG = new String[]{ 
+		"--configDir", "/dopa-vm/stratosphere-0.5-hadoop2-SNAPSHOT/conf", 
+		"--updateTime", "1000", "--wait" };
+	
+	/**
 	 * Factory to handle all connections with rabbitMQ
 	 */
 	private ServerConnectionFactory connectionFactory;
@@ -580,18 +587,21 @@ public class DOPAScheduler {
 	}
 	
 	/**
-	 * TODO
 	 * You just have to specified the nephele configuration directory with
 	 * 		--configDir <nephele-config-directory-path>
+	 * 
 	 * Other specifications arn't needed.
 	 * 
-	 * @param args
+	 * @param args should '--configDir <nephele-config-directory-path>'
 	 */
 	public static void main( String[] args ){
 		if ( args != null && args.length >= 2 ){
-			// get config dir!
-			SchedulerConfigConstants.EXECUTER_CONFIG[0] = args[0];
-			SchedulerConfigConstants.EXECUTER_CONFIG[1] = args[1];
+			if ( !args[0].matches("--configDir") ){
+				System.err.println( "You do not specify the configuration directory in the correct way." + System.lineSeparator() + 
+						"Use the keyword '--configDir'!");
+				return;
+			}
+			DOPAScheduler.EXECUTER_CONFIG[1] = args[1];
 		}
 		
 		DOPAScheduler scheduler = createNewSchedulerSystem();

@@ -13,6 +13,7 @@ import eu.stratosphere.meteor.common.SchedulerConfigConstants;
 import eu.stratosphere.meteor.client.ClientFrontend;
 import eu.stratosphere.meteor.common.JobState;
 import eu.stratosphere.meteor.common.MessageBuilder;
+import eu.stratosphere.meteor.server.DOPAScheduler;
 
 /**
  * This class represents a job on the server site of the DOPAScheduler system.
@@ -80,7 +81,7 @@ public class RRJob {
 		this.clientID = clientID;
 		this.jobID = jobID;
 		this.status= JobState.WAITING;
-		this.frontend = new ClientFrontend( SchedulerConfigConstants.EXECUTER_CONFIG );
+		this.frontend = new ClientFrontend( DOPAScheduler.EXECUTER_CONFIG );
 		this.submitTime = submitTime;
 		this.mappedResult = new ArrayList<String>();
 		this.errorJSON = new JSONObject();
