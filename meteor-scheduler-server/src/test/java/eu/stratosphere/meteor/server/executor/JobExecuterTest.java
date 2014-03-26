@@ -35,7 +35,7 @@ public class JobExecuterTest {
 	 */
 	private static final Date now = new Date();
 	private static RRJob jobFailure = new RRJob("c001", "j001", "ProvokeError", now );
-	private static RRJob jobClean = new RRJob("c002", "j001", script, now);
+	private static RRJob jobClean = new RRJob("c002", "j002", script, now);
 	
 	/**
 	 * 

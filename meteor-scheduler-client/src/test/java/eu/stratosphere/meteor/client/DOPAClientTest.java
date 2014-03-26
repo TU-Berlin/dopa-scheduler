@@ -176,7 +176,7 @@ public class DOPAClientTest {
      * Test to submit a correct job
      * - it's an integration test -
      */
-    @Ignore
+    //@Ignore
     @Test ( timeout = THRESHOLD )
     public void testQuerySubmision () {
         // create client
@@ -200,7 +200,7 @@ public class DOPAClientTest {
         // wait until this job finished
         while ( !finished ) {
         	try {Thread.sleep(100);}
-        	catch(InterruptedException ie){ie.printStackTrace();}
+        	catch(InterruptedException ie){break;}
         }
         
         // if it finished, disconnect and test states
@@ -216,7 +216,7 @@ public class DOPAClientTest {
      * 'testQuerySubmission'!
      * - it's an integration test -
      */
-    @Ignore
+    //@Ignore
     @Test ( timeout = THRESHOLD*2 ) // double timeout
     public void testResultRequest(){
     	// initialize
@@ -246,7 +246,9 @@ public class DOPAClientTest {
 			public void handleFileBlock(DSCLJob job, ResultFileBlock block) {
 				blockIdx = block.getBlockIndex();
 				totalAmountOfBlocks = block.getTotalNumberOfBlocks();
-				System.out.println("New block (Idx:" + block.getBlockIndex() + ") of job " + job.getID() + "incoming:");
+				System.out.println(
+						"New block (Idx:" + block.getBlockIndex() + "/" + block.getTotalNumberOfBlocks() + 
+						") of job " + job.getID() + "incoming:");
 				System.out.println(block.getStringRepresentation());
 				System.out.println();
 			}
@@ -254,7 +256,7 @@ public class DOPAClientTest {
     	
     	job.requestResult(0, 1024, Integer.MAX_VALUE, resultListner);
     	
-    	while ( blockIdx < totalAmountOfBlocks ){
+    	while ( blockIdx < totalAmountOfBlocks-1 ){ // blockIdx starts from 0
     		try { Thread.sleep(100); }
     		catch ( InterruptedException ie ){ fail("Job doesn't reached the end of result file. Current thread interrupted."); }
     	}

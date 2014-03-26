@@ -152,7 +152,7 @@ public class ClientConnectionFactory {
 					SchedulerConfigConstants.getRoutingKey( client.getClientID() ) );
 		} else {
 			DOPAClient.LOG.warn("A client with your ID is still registered. You can use reconnect if you are sure to connect!");
-            throw new InterruptedException("Duplicate client already registered at server");
+            throw new InterruptedException("Duplicate client already registered at the server");
 		}
 		
 		// close and delete all handshake components

@@ -219,14 +219,14 @@ public class FileSender extends Thread {
 	private void runLocal( String path ){
 		File file = new File( path );
 		if ( file.isDirectory() || !file.exists() ){
-			DOPAScheduler.LOG.error("Given file is not a directory or doesn't exists: " + path);
-			throw new IllegalArgumentException("Given file is not a directory or doesn't exists: " + path);
+			DOPAScheduler.LOG.error("Given file is a directory or doesn't exists: " + path);
+			throw new IllegalArgumentException("Given file is a directory or doesn't exists: " + path);
 		}
 		
 		// calculate block size or change 
 		if ( file.length() / blockSize > sumOfBlocks )
 			blockSize = (int) ( file.length()/sumOfBlocks);
-		else sumOfBlocks = (file.length()+1) / blockSize;
+		else sumOfBlocks = file.length() / blockSize + 1;
 		
 		// send specifications
 		try { this.sendSpecifications(); }
@@ -295,7 +295,7 @@ public class FileSender extends Thread {
 			FileStatus[] fileStates;
 			
 			// if it is a directory list all files, else list this one exactly file
-			if ( hdfs.getFileStatus( path ).isDir() ) fileStates = hdfs.listStatus(path);
+			if ( hdfs.getFileStatus( path ).isDirectory() ) fileStates = hdfs.listStatus(path);
 			else fileStates = new FileStatus[] { hdfs.getFileStatus( path ) };
 			
 			// return list

@@ -119,8 +119,10 @@ public class DOPAClient {
 		try {
             this.connectionFac = new ClientConnectionFactory( this, timeout );
             return true;
-        }
-		catch ( Exception exc ) {
+        } catch ( InterruptedException iexc ){
+        	LOG.warn("You are still not connected to the scheduler service, cause:" + System.lineSeparator() +
+        			iexc.getMessage());
+        } catch ( Exception exc ) {
             LOG.error( "Cannot connected to the scheduler services!" + System.lineSeparator(), exc );
         }
         return false;

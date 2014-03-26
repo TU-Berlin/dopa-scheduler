@@ -1,16 +1,23 @@
 package eu.stratosphere.meteor.server;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.NoSuchElementException;
-
-import eu.stratosphere.meteor.common.SchedulerConfigConstants;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.conf.Configuration;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -20,6 +27,7 @@ import com.rabbitmq.client.QueueingConsumer.Delivery;
 import eu.stratosphere.meteor.common.JobState;
 import eu.stratosphere.meteor.common.MessageBuilder;
 import eu.stratosphere.meteor.common.MessageBuilder.RequestType;
+import eu.stratosphere.meteor.common.SchedulerConfigConstants;
 import eu.stratosphere.meteor.server.executor.FileSender;
 import eu.stratosphere.meteor.server.executor.RRJob;
 import eu.stratosphere.meteor.server.executor.RoundRobin;
@@ -38,7 +46,7 @@ public class DOPAScheduler {
 	/**
 	 * Log for server site.
 	 */
-	public static Log LOG = LogFactory.getLog( DOPAScheduler.class );
+	public static final Log LOG = LogFactory.getLog( DOPAScheduler.class );
 	
 	/**
 	 * Factory to handle all connections with rabbitMQ
@@ -361,6 +369,56 @@ public class DOPAScheduler {
 	}
 	
 	/**
+	 * This method creates a new directory for the given client, if necessary.
+	 * @param clientID name of client
+	 * @throws IOException if the file system cannot create the directory
+	 * @throws URISyntaxException if the host path cannot convert to a URI object
+	 */
+	private void mkdir( String clientID ) throws IOException, URISyntaxException {
+		// get root path
+		String rootPath = SchedulerConfigConstants.SCHEDULER_FILESYSTEM_ROOT_PATH;
+		
+		if ( rootPath.startsWith("file:"+File.separator+File.separator+File.separator) ){ // local file system
+			// trim path to local system standards
+			rootPath = rootPath.substring("file://".length());
+			// get local file system
+			java.nio.file.FileSystem system = FileSystems.getDefault();
+			// build path to client directory
+			Path path = system.getPath(rootPath, clientID);
+			// if this path doesn't exist or is not a directory create a new directory
+			if ( !Files.exists( path ) || !Files.exists( path ) )
+				Files.createDirectory(path);
+		} else if ( rootPath.startsWith("hdfs:"+File.separator+File.separator) ){ // hadoop file system
+			// find host of the hdfs path
+			Matcher matcher = Pattern.compile("(hdfs:"+File.separator+File.separator+"[a-zA-Z0-9\\.:\\-]+)("+File.separator+"[a-zA-Z\\./_\\]+)").matcher(rootPath);
+			
+			// if no host informations found the current path is invalid
+			if ( !matcher.find() ){
+				DOPAScheduler.LOG.warn("No host informations found in the root hadoop path.");
+				return;
+			}
+			
+			// otherwise get the hdfs
+			Configuration conf = new Configuration();
+			org.apache.hadoop.fs.FileSystem system = org.apache.hadoop.fs.FileSystem.get( 
+					new URI(matcher.group(0)), 
+					conf );
+			
+			// build a hdfs path to client directory
+			org.apache.hadoop.fs.Path path = new org.apache.hadoop.fs.Path( rootPath + clientID );
+			
+			// if this path doesn't exist or is not a directory create a new directory
+			if ( !system.exists(path) || !system.isDirectory(path) )
+				system.mkdirs(path);
+			
+			// close hdfs
+			system.close();
+		} else {
+			DOPAScheduler.LOG.error("Unknown based file system!");
+		}
+	}
+	
+	/**
 	 * Adds an incoming client to the scheduler services. Returns true if
 	 * the client got the rights to enter this service, false otherwise.
 	 * 
@@ -370,9 +428,18 @@ public class DOPAScheduler {
 	protected boolean addClient(String clientID) {
 		if ( registeredClients.contains(clientID) ) return false;
 		else {
+			// add client to registered clients
 			registeredClients.add(clientID);
+			// put an empty list for finished jobs of this client
 			finishedJobsCollection.put( clientID, new HashMap<String, RRJob>());
+			// create a new entry for submitted jobs
 			submittedJobs.add(clientID);
+			// last but not least; create the directory on the server for this new client
+			try { mkdir( clientID ); }
+			catch ( IOException | URISyntaxException ioe ){ 
+				DOPAScheduler.LOG.warn("Cannot create directory for client " + clientID + ".", ioe);
+			}
+			// inform LOG
 			DOPAScheduler.LOG.info("Client '" + clientID + "' registered.");
 		}
 		return true;

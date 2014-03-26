@@ -1,5 +1,6 @@
 package eu.stratosphere.meteor.server.executor;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -12,7 +13,6 @@ import eu.stratosphere.meteor.common.SchedulerConfigConstants;
 import eu.stratosphere.meteor.client.ClientFrontend;
 import eu.stratosphere.meteor.common.JobState;
 import eu.stratosphere.meteor.common.MessageBuilder;
-import eu.stratosphere.meteor.server.DOPAScheduler;
 
 /**
  * This class represents a job on the server site of the DOPAScheduler system.
@@ -66,7 +66,7 @@ public class RRJob {
 	 * The Pattern to find paths
 	 */
 	private final Pattern pathPattern = Pattern.compile(
-			"(write|read)\\s+(\\$\\w+\\s+to|from)\\s+'\\s*(/?[^']+\\.json)'\\s*;"
+			"(write|read)\\s+(\\$\\w+\\s+to|from)\\s+'\\s*("+File.separator+"?[^']+\\.json)'\\s*;"
 			);
 	
 	/**
@@ -84,9 +84,8 @@ public class RRJob {
 		this.submitTime = submitTime;
 		this.mappedResult = new ArrayList<String>();
 		this.errorJSON = new JSONObject();
-		this.executor = new JobExecutor( this );
 		this.mappedScript = this.mappingScript( meteorScript );
-		DOPAScheduler.LOG.info("Mapped meteor script to: " + this.mappedScript);
+		this.executor = new JobExecutor( this );
 	}
 	
 	/**
@@ -112,8 +111,8 @@ public class RRJob {
 				String tmpPath = SchedulerConfigConstants.SCHEDULER_FILESYSTEM_ROOT_PATH + this.clientID;
 				
 				// adding path separator
-				if ( matcher.group(3).startsWith("/") ) tmpPath += matcher.group(3);
-				else tmpPath += "/" + matcher.group(3);
+				if ( matcher.group(3).startsWith(File.separator) ) tmpPath += matcher.group(3);
+				else tmpPath += File.separator + matcher.group(3);
 				
 				// replace old paths by new
 				meteorScript = meteorScript.replace( matcher.group(3), tmpPath);

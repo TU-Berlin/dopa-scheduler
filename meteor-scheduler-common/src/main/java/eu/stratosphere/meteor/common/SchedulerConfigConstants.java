@@ -1,5 +1,7 @@
 package eu.stratosphere.meteor.common;
 
+import java.io.File;
+
 /**
  * 
  * A collection of global constants important for clients and server.
@@ -28,9 +30,10 @@ public final class SchedulerConfigConstants {
 	
 	/**
 	 * This is the root path to the file system. It should be start with 'file:///' or 'hdfs://' 
-	 * and it should end with a line separator.
+	 * and it should end with / (or \ for other systems).
 	 */
-	public static final String SCHEDULER_FILESYSTEM_ROOT_PATH = "file:///dopa-vm/testPath/";
+	public static final String SCHEDULER_FILESYSTEM_ROOT_PATH = 
+			"file:"+File.separator+File.separator+File.separator+"dopa-vm"+File.separator+"testPath"+File.separator;
 	
 	/**
 	 * The exchange name to handle requests from clients.
@@ -98,7 +101,7 @@ public final class SchedulerConfigConstants {
 	/**
 	 * The default configuration to submitting a job.
 	 */
-	public static String[] EXECUTER_CONFIG = new String[]{ "--configDir", "/dopa-vm/stratosphere/conf", "--updateTime", "1000", "--wait" };
+	public static String[] EXECUTER_CONFIG = new String[]{ "--configDir", "/dopa-vm/stratosphere-0.5-hadoop2-SNAPSHOT/conf", "--updateTime", "1000", "--wait" };
 	
 	/**
 	 * Generate a key by given queueName. This method warrant consistency.
