@@ -217,7 +217,6 @@ public class FileSender extends Thread {
 	 * @param path to local file
 	 */
 	private void runLocal( String path ){
-        path = path.substring("file://".length(), path.length());
 		File file = new File( path );
 		if ( file.isDirectory() || !file.exists() ){
 			DOPAScheduler.LOG.error("Given file is a directory or doesn't exists: " + path);
