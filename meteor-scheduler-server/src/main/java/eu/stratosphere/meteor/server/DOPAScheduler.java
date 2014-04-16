@@ -601,7 +601,13 @@ public class DOPAScheduler {
 						"Use the keyword '--configDir'!");
 				return;
 			}
-			DOPAScheduler.EXECUTER_CONFIG[1] = args[1];
+            DOPAScheduler.EXECUTER_CONFIG[1] = args[1];
+
+			if (args.length >= 4) {
+                if (args[2].matches("--clientRoot")) {
+                    SchedulerConfigConstants.SCHEDULER_FILESYSTEM_ROOT_PATH = args[3];
+                }
+            }
 		}
 		
 		DOPAScheduler scheduler = createNewSchedulerSystem();

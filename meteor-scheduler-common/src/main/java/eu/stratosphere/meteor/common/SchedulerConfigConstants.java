@@ -32,8 +32,8 @@ public final class SchedulerConfigConstants {
 	 * This is the root path to the file system. It should be start with 'file:///' or 'hdfs://' 
 	 * and it should end with / (or \ for other systems).
 	 */
-	public static final String SCHEDULER_FILESYSTEM_ROOT_PATH = 
-			"file:"+File.separator+File.separator+File.separator+"dopa-vm"+File.separator+"testPath"+File.separator;
+	public static String SCHEDULER_FILESYSTEM_ROOT_PATH =
+			"file:"+File.separator+File.separator+File.separator+"/0/stratdata/tmp/scheduler-root"+File.separator;
 	
 	/**
 	 * The exchange name to handle requests from clients.
