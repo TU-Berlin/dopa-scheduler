@@ -48,9 +48,11 @@ public class ClientConnectionFactory {
 	 * @param client the parent of this factory
 	 * @param reconnect true if the clients wants to reconnect to the scheduler, false otherwise
 	 * @param timeout to build the connection with the server
+     * @param host the hostname to connect to
+     * @param port the the port of the host to connect to
 	 * @throws Exception if the factory cannot initialize connections to rabbitMQ
 	 */
-	protected ClientConnectionFactory( final DOPAClient client, boolean reconnect, int timeout ) throws Exception {		
+	protected ClientConnectionFactory( final DOPAClient client, boolean reconnect, int timeout, String host, int port ) throws Exception {
 		this.client = client;
 		
 		DOPAClient.LOG.info("Initialize connections to RabbitMQ.");
@@ -88,6 +90,22 @@ public class ClientConnectionFactory {
 			throw ioe;
 		}
 	}
+
+    /**
+     * Create new channel to connect this client with rabbitMQ and the DOPAScheduler.
+     * It creates a channel to send request and another channel to get status.
+     *
+     * This constructor catch all exception in the initialization process and throw
+     * a general exception with detailed informations.
+     *
+     * @param client the parent of this factory
+     * @param reconnect true if the clients wants to reconnect to the scheduler, false otherwise
+     * @param timeout to build the connection with the server
+     * @throws Exception if the factory cannot initialize connections to rabbitMQ
+     */
+    protected ClientConnectionFactory ( final DOPAClient client, boolean reconnect, int timeout) throws Exception {
+        this (client, reconnect, timeout, SchedulerConfigConstants.SCHEDULER_HOST_ADDRESS, SchedulerConfigConstants.SCHEDULER_PORT);
+    }
 	
 	/**
 	 * Create new channel to connect this client with rabbitMQ and the DOPAScheduler.

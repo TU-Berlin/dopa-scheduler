@@ -62,6 +62,10 @@ public class DOPAClient {
 	 * The timeout time to connect with the scheduler system
 	 */
 	private int timeout = 5_000;
+
+    private String host = null;
+
+    private int port = -1;
 	
 	/**
 	 * Constructs a new client object. This client isn't connected
@@ -98,6 +102,20 @@ public class DOPAClient {
 		LOG.info("Sets the timeout from " + timeout + "ms to " + newTimeOut + "ms.");
 		this.timeout = newTimeOut;
 	}
+
+    /**
+     * sets the port for the connection, to use the default pass -1
+     */
+    public void setPort(int port) {
+        this.port = port;
+    }
+
+    /**
+     * sets the host for the connection, pass <code>null</code> to use the default
+     */
+    public void setHost(String host) {
+        this.host = host;
+    }
 	
 	/**
 	 * Try to connect the client with the scheduler services.
@@ -117,7 +135,11 @@ public class DOPAClient {
 		
 		// else try to connect it
 		try {
-            this.connectionFac = new ClientConnectionFactory( this, timeout );
+            if (host == null || port == -1) {
+                this.connectionFac = new ClientConnectionFactory( this, timeout );
+            } else {
+                this.connectionFac = new ClientConnectionFactory( this, false, timeout, host, port);
+            }
             return true;
         } catch ( InterruptedException iexc ){
         	LOG.warn("You are still not connected to the scheduler service, cause:" + System.lineSeparator() +
@@ -147,9 +169,14 @@ public class DOPAClient {
 			LOG.error( "The client is still connected. If you want to reconnect the client disconnect it first." );
 			return true;
 		}
-		
+
 		// try to reconnect
-		try { this.connectionFac = new ClientConnectionFactory( this, true, timeout );
+		try {
+            if (host == null || port == -1) {
+                this.connectionFac = new ClientConnectionFactory( this, true, timeout );
+            } else {
+                this.connectionFac = new ClientConnectionFactory( this, true, timeout, host, port);
+            }
             return true;
         }
 		catch ( Exception exc ) {
