@@ -60,8 +60,8 @@ public class ClientConnectionFactory {
 		// build a connection
 		connectFactory = new ConnectionFactory();
 		connectFactory.setConnectionTimeout( timeout );
-		connectFactory.setHost( SchedulerConfigConstants.SCHEDULER_HOST_ADDRESS );
-		connectFactory.setPort( SchedulerConfigConstants.SCHEDULER_PORT );
+		connectFactory.setHost( host );
+		connectFactory.setPort( port );
 		
 		try {
 			// create channels
