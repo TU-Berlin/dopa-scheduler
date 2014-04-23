@@ -37,15 +37,11 @@ public class JobExecutor extends Thread {
 			client.execute( meteorScript );
 			job.setStatus( JobState.FINISHED );
 			DOPAScheduler.LOG.info("Finished job " + job.getJobID() );
-		} catch (NullPointerException e){
-			job.setErrorMessage( "Cannot parse the meteor script of your job. " + e.toString() );
-			job.setStatus( JobState.ERROR );
-			DOPAScheduler.LOG.warn("Cannot parse the meteor script for the job " + job.getJobID() + ". A NullPointerException occurred.", e);
 		} catch (QueryParserException e) {
 			job.setErrorMessage( "Cannot parse the meteor script of your job. " + e.toString() );
 			job.setStatus( JobState.ERROR );
 			DOPAScheduler.LOG.warn("Cannot parse the meteor script. " + job.getJobID(), e);
-		} catch (IOException e) {
+		} catch (Exception e) {
 			job.setErrorMessage( "Cannot execute your job. " + e.toString() );
 			job.setStatus( JobState.ERROR );
 			DOPAScheduler.LOG.warn("Cannot execute the job " + job.getJobID(), e);
